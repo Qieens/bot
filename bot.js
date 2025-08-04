@@ -48,7 +48,7 @@ const isAdmin = async (groupId, userId, sock) => {
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
     await sock.sendMessage(OWNER_NUMBER, {
-      text: `🚨 *${label}*\n\n\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\`\`\``
+      text: `🚨 *${label}*\n\n\\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\\`\`\``
     })
   } catch (e) {
     logger.error('Gagal kirim log ke owner:', e)
@@ -99,10 +99,8 @@ async function connectToWhatsApp() {
             ? msg.message.conversation
             : msg.message[type]?.text || ''
 
-        // Blokir semua perintah jika maintenance, kecuali owner
         if (maintenance && sender !== OWNER_NUMBER) return
 
-        // Keluar dari grup yang tidak diizinkan
         if (isGroup && !allowedGroups.includes(from)) {
           await sock.sendMessage(from, {
             text: '👋 Maaf, bot ini hanya diizinkan aktif di grup tertentu.\nKeluar otomatis dari grup ini.'
@@ -112,7 +110,6 @@ async function connectToWhatsApp() {
           return
         }
 
-        // Deteksi link grup dan kick jika bukan admin
         if (isGroup && type === 'extendedTextMessage') {
           const text = msg.message.extendedTextMessage?.text || ''
           if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
@@ -126,7 +123,6 @@ async function connectToWhatsApp() {
           const text = body
           const fallback = { text: '❌ Kamu bukan admin.' }
 
-          // Proteksi perintah grup
           const groupOnlyCommands = [
             '.admin', '.kick', '.add', '.promote', '.demote',
             '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning'
@@ -139,22 +135,7 @@ async function connectToWhatsApp() {
           switch (command) {
             case '.menuadmin':
               await sock.sendMessage(from, {
-                text: `╭───❏ 🛠 ADMIN MENU ❏───╮
-│
-├ ✦ .kick @user
-├ ✦ .add <nomor>
-├ ✦ .promote @user
-├ ✦ .demote @user
-├ ✦ .open (membuka grup) 
-├ ✦ .close (menutup grup)
-├ ✦ .setname <nama grup>
-├ ✦ .setdesc <deskripsi grup>
-├ ✦ .giveaway (comingsoon)
-└ ✦ .tagall [pesan opsional]
-
-📌 Khusus admin grup saja!
-🤖 Bot by: @qieen.store
-╰──────────────────────╯`
+                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add <nomor>\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway (comingsoon)\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
               })
               break
 
@@ -254,52 +235,57 @@ async function connectToWhatsApp() {
               break
 
             case '.maintenance': {
-  if (from.endsWith('@g.us')) return
-  if (sender !== OWNER_NUMBER) return
+              if (from.endsWith('@g.us')) return
+              if (sender !== OWNER_NUMBER) return
 
-  const mode = args[0]?.toLowerCase()
+              const mode = args[0]?.toLowerCase()
 
-  if (!mode) {
-    await sock.sendMessage(from, {
-      text: `🔧 Gunakan perintah:\n\n.maintenance on\n.maintenance off\n.maintenance (cek status)`
-    })
-    break
-  }
+              if (!mode) {
+                await sock.sendMessage(from, {
+                  text: `🔧 Gunakan perintah:\n\n.maintenance on\n.maintenance off\n.maintenance (cek status)`
+                })
+                break
+              }
 
-  if (mode === 'on' || mode === 'off') {
-    maintenance = mode === 'on'
-    writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
+              if (mode === 'on' || mode === 'off') {
+                maintenance = mode === 'on'
+                writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
 
-    await sock.sendMessage(from, {
-      text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
-    })
+                await sock.sendMessage(from, {
+                  text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
+                })
 
-    // Notifikasi ke grup
-    try {
-      const allGroups = await sock.groupFetchAllParticipating()
-      for (const group of Object.values(allGroups)) {
-        if (allowedGroups.includes(group.id)) {
-          await sock.sendMessage(group.id, {
-            text: maintenance
-              ? '⛔ Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.'
-              : '✅ Bot telah kembali *aktif*. Silakan lanjutkan aktivitas seperti biasa.'
-          })
+                try {
+                  const allGroups = await sock.groupFetchAllParticipating()
+                  for (const group of Object.values(allGroups)) {
+                    if (allowedGroups.includes(group.id)) {
+                      await sock.sendMessage(group.id, {
+                        text: maintenance
+                          ? '⛔ Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.'
+                          : '✅ Bot telah kembali *aktif*. Silakan lanjutkan aktivitas seperti biasa.'
+                      })
+                    }
+                  }
+                } catch (err) {
+                  await sendErrorToOwner(err, 'Gagal Kirim Notifikasi Maintenance')
+                }
+
+                break
+              } else {
+                await sock.sendMessage(from, {
+                  text: `❌ Perintah tidak dikenali.\nGunakan:\n.maintenance on / off / [kosong untuk cek status]`
+                })
+                break
+              }
+            }
+          }
         }
+      } catch (err) {
+        logger.error('Gagal memproses pesan:', err)
+        await sendErrorToOwner(err, 'Message Handling Error')
       }
-    } catch (err) {
-      await sendErrorToOwner(err, 'Gagal Kirim Notifikasi Maintenance')
-    }
-
-    break
-  } else {
-    await sock.sendMessage(from, {
-      text: `❌ Perintah tidak dikenali.\nGunakan:\n.maintenance on / off / [kosong untuk cek status]`
     })
-    break
-  }
-}
 
-    // Auto Warning
     setInterval(async () => {
       if (!autoWarning || warningCooldown || !sock || maintenance) return
       warningCooldown = true
@@ -318,6 +304,7 @@ async function connectToWhatsApp() {
         setTimeout(() => (warningCooldown = false), 30 * 60 * 1000)
       }
     }, 60 * 1000)
+
   } catch (error) {
     logger.fatal('Error during connection:', error)
     await sendErrorToOwner(error, 'Fatal Error saat Connect')
@@ -328,7 +315,6 @@ async function connectToWhatsApp() {
   }
 }
 
-// === Error Handling ===
 process.on('uncaughtException', async (err) => {
   logger.error('❌ Uncaught Exception:', err)
   await sendErrorToOwner(err, 'Uncaught Exception')
