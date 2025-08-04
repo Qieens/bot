@@ -13,11 +13,10 @@ const {
   getContentType
 } = baileys
 
-  logger: Pino({ level: 'silent' }), // ini penting!
+ logger: Pino({ level: 'silent' }), // ini penting!
   auth: {
     creds,
     keys: makeCacheableSignalKeyStore(keyStore, Pino({ level: 'silent' })) // juga disilent
-  }
 })
 
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
