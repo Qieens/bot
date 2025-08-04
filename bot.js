@@ -162,20 +162,31 @@ async function connectToWhatsApp() {
             }
 
             case '.add': {
-              const number = args[0]?.replace(/\D/g, '')
-              if (number) {
-                try {
-                  await sock.groupParticipantsUpdate(from, [`${number}@s.whatsapp.net`], 'add')
-                  await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
-                } catch (err) {
-                  await sock.sendMessage(from, { text: `❌ Gagal menambahkan anggota. Mungkin nomor salah, tidak aktif, atau bot bukan admin.` })
-                  await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
-                }
-              } else {
-                await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
-              }
-              break
-            }
+  const number = args[0]?.replace(/\D/g, '')
+  if (!number) return await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
+
+  const jid = `${number}@s.whatsapp.net`
+  try {
+    await sock.groupParticipantsUpdate(from, [jid], 'add')
+    await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
+  } catch (err) {
+    logger.warn('Gagal menambahkan:', err?.message || err)
+    if (err?.message?.includes('not-authorized') || err?.message?.includes('recently left')) {
+      try {
+        const inviteCode = await sock.groupInviteCode(from)
+        await sock.sendMessage(from, {
+          text: `⚠️ Gagal menambahkan. Kirim link ini ke member:\nhttps://chat.whatsapp.com/${inviteCode}`
+        })
+      } catch {
+        await sock.sendMessage(from, { text: `❌ Gagal membuat link undangan.` })
+      }
+    } else {
+      await sock.sendMessage(from, { text: `❌ Gagal menambahkan: ${(err.message || '').slice(0, 100)}` })
+    }
+    await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
+  }
+  break
+}
 
             case '.promote': {
               const promoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
