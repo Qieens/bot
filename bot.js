@@ -13,8 +13,6 @@ const {
   getContentType
 } = baileys
 
-const sock = makeWASocket({
-  version,
   logger: Pino({ level: 'silent' }), // ini penting!
   auth: {
     creds,
