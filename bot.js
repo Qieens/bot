@@ -258,6 +258,7 @@ async function connectToWhatsApp() {
   const mode = args[0]?.toLowerCase()
 
   if (!mode) {
+    // Kirim tombol jika tidak ada argumen
     await sock.sendMessage(from, {
       text: '🔧 Pilih status *maintenance*:',
       buttons: [
@@ -268,9 +269,7 @@ async function connectToWhatsApp() {
       headerType: 1
     })
     break
-  }
-
-  if (mode === 'on' || mode === 'off') {
+  } else if (mode === 'on' || mode === 'off') {
     maintenance = mode === 'on'
     writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
 
@@ -294,15 +293,14 @@ async function connectToWhatsApp() {
     }
 
     break
+  } else {
+    // Perintah tidak dikenali
+    await sock.sendMessage(from, {
+      text: '❌ Perintah tidak dikenali. Gunakan tombol atau ketik `.maintenance on` atau `.maintenance off`.'
+    })
+    break
   }
-
-  // Jika mode tidak valid
-  await sock.sendMessage(from, {
-    text: '❌ Perintah tidak dikenali. Gunakan tombol atau ketik `.maintenance on` atau `.maintenance off`.'
-  })
-  break
 }
-   
     // Interval Auto Warning
     setInterval(async () => {
       if (!autoWarning || warningCooldown || !sock) return
