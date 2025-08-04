@@ -13,12 +13,13 @@ const {
   getContentType
 } = baileys
 
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true }
-  },
-  level: 'info'
+const sock = makeWASocket({
+  version,
+  logger: Pino({ level: 'silent' }), // ini penting!
+  auth: {
+    creds,
+    keys: makeCacheableSignalKeyStore(keyStore, Pino({ level: 'silent' })) // juga disilent
+  }
 })
 
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
