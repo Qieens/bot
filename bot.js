@@ -153,7 +153,7 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
             }
 
             case '.add': {
-            const number = args[1]?.replace(/\D/g, '')
+            const number = args[0]?.replace(/\D/g, '')
             if (number) {
               try {
                 await sock.groupParticipantsUpdate(from, [`${number}@s.whatsapp.net`], 'add')
@@ -296,6 +296,8 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
   logger.error('❌ Uncaught Exception:', err)
 
   try {
+    
+if (sock?.sendMessage) {
     await sock.sendMessage(OWNER_NUMBER, {
       text: `🚨 *Uncaught Exception*\n\n\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\`\`\``
     })
