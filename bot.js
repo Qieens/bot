@@ -17,7 +17,7 @@ const {
   auth: {
     creds,
     keys: makeCacheableSignalKeyStore(keyStore, Pino({ level: 'silent' })) // juga disilent
-})
+
 
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
 const allowedGroups = ['120363419880680909@g.us']
