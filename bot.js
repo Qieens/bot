@@ -167,22 +167,35 @@ async function connectToWhatsApp() {
 
   const jid = `${number}@s.whatsapp.net`
   try {
-    await sock.groupParticipantsUpdate(from, [jid], 'add')
-    await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
-  } catch (err) {
-    logger.warn('Gagal menambahkan:', err?.message || err)
-    if (err?.message?.includes('not-authorized') || err?.message?.includes('recently left')) {
-      try {
-        const inviteCode = await sock.groupInviteCode(from)
-        await sock.sendMessage(from, {
-          text: `⚠️ Gagal menambahkan. Kirim link ini ke member:\nhttps://chat.whatsapp.com/${inviteCode}`
-        })
-      } catch {
-        await sock.sendMessage(from, { text: `❌ Gagal membuat link undangan.` })
-      }
+    const result = await sock.groupParticipantsUpdate(from, [jid], 'add')
+    const status = result[0]?.status
+
+    if (status === '200') {
+      await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
     } else {
-      await sock.sendMessage(from, { text: `❌ Gagal menambahkan: ${(err.message || '').slice(0, 100)}` })
+      let reason = {
+        '403': '❌ Tidak diizinkan menambahkan (mungkin sudah keluar sebelumnya)',
+        '408': '❌ Nomor tidak ditemukan atau tidak aktif di WhatsApp',
+        '409': '❌ Sudah jadi anggota grup',
+        '500': '❌ Terjadi kesalahan dari server WhatsApp'
+      }[status] || `❌ Gagal menambahkan (kode: ${status})`
+
+      await sock.sendMessage(from, { text: reason })
+
+      // Jika masih memungkinkan, buatkan link undangan
+      if (status === '403') {
+        try {
+          const inviteCode = await sock.groupInviteCode(from)
+          await sock.sendMessage(from, {
+            text: `📨 Kirim link ini ke member:\nhttps://chat.whatsapp.com/${inviteCode}`
+          })
+        } catch {
+          await sock.sendMessage(from, { text: '⚠️ Gagal membuat link undangan.' })
+        }
+      }
     }
+  } catch (err) {
+    await sock.sendMessage(from, { text: `❌ Error: ${(err.message || '').slice(0, 100)}` })
     await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
   }
   break
