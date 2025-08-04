@@ -1,4 +1,4 @@
-// Versi Final Script WhatsApp Bot dengan fallback dan tanpa ubah struktur
+// WhatsApp Bot — Final Stable Version
 import * as baileys from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -42,6 +42,16 @@ const isAdmin = async (groupId, userId, sock) => {
   }
 }
 
+const sendErrorToOwner = async (err, label = 'Error') => {
+  try {
+    await sock.sendMessage(OWNER_NUMBER, {
+      text: `🚨 *${label}*\n\n\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\`\`\``
+    })
+  } catch (e) {
+    logger.error('Gagal kirim log ke owner:', e)
+  }
+}
+
 async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -58,71 +68,72 @@ async function connectToWhatsApp() {
         logger.warn('Connection closed. Reconnecting:', shouldReconnect)
         if (shouldReconnect) connectToWhatsApp()
       } else if (connection === 'open') {
-        logger.info('Bot connected')
+        logger.info('✅ Bot connected')
       }
     })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
-      const msg = messages[0]
-      if (!msg.message || msg.key.fromMe) return
+      try {
+        const msg = messages[0]
+        if (!msg.message || msg.key.fromMe) return
 
-      const from = msg.key.remoteJid
-      const sender = msg.key.participant || msg.key.remoteJid
-      const isGroup = from.endsWith('@g.us')
-      const type = getContentType(msg.message)
-      const body = type === 'conversation' ? msg.message.conversation : msg.message[type]?.text || ''
+        const from = msg.key.remoteJid
+        const sender = msg.key.participant || msg.key.remoteJid
+        const isGroup = from.endsWith('@g.us')
+        const type = getContentType(msg.message)
+        const body = type === 'conversation' ? msg.message.conversation : msg.message[type]?.text || ''
 
-      let maintenance = false
-      if (existsSync(maintenanceFile)) {
-        const data = JSON.parse(readFileSync(maintenanceFile, 'utf-8'))
-        maintenance = data.active
-      }
-
-      if (maintenance && sender !== OWNER_NUMBER) return
-
-      if (isGroup && !allowedGroups.includes(from)) {
-        await sock.sendMessage(from, {
-          text: '👋 Maaf, bot ini hanya diizinkan aktif di grup tertentu.\nKeluar otomatis dari grup ini.'
-        })
-        logger.warn(`Grup ${from} tidak di whitelist. Bot akan keluar.`)
-        await sock.groupLeave(from)
-        return
-      }
-
-      if (isGroup && type === 'extendedTextMessage') {
-        const text = msg.message.extendedTextMessage?.text || ''
-        if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
-          await sock.sendMessage(from, { text: '🔗 Link grup terdeteksi dan akan dihapus.' })
-          await sock.groupParticipantsUpdate(from, [sender], 'remove')
-        }
-      }
-
-      if (body.startsWith('.')) {
-        const [command, ...args] = body.trim().split(/ +/)
-        const text = body
-        const fallback = { text: '❌ Kamu bukan admin.' }
-
-        switch (command) {
-          case '.menuadmin':
-          case '.kick':
-          case '.add':
-          case '.promote':
-          case '.demote':
-          case '.tutup':
-          case '.buka':
-          case '.setname':
-          case '.setdesc':
-          case '.tagall':
-          case '.togglewarning':
-            if (!isGroup) return
-            if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, fallback, { quoted: msg })
-            break
+        let maintenance = false
+        if (existsSync(maintenanceFile)) {
+          const data = JSON.parse(readFileSync(maintenanceFile, 'utf-8'))
+          maintenance = data.active
         }
 
-        switch (command) {
-          case '.menuadmin':
-        await sock.sendMessage(from, {
-text: `╭───❏ 🛠 ADMIN MENU ❏───╮
+        if (maintenance && sender !== OWNER_NUMBER) return
+
+        if (isGroup && !allowedGroups.includes(from)) {
+          await sock.sendMessage(from, {
+            text: '👋 Maaf, bot ini hanya diizinkan aktif di grup tertentu.\nKeluar otomatis dari grup ini.'
+          })
+          logger.warn(`Grup ${from} tidak di whitelist. Bot akan keluar.`)
+          await sock.groupLeave(from)
+          return
+        }
+
+        if (isGroup && type === 'extendedTextMessage') {
+          const text = msg.message.extendedTextMessage?.text || ''
+          if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
+            await sock.sendMessage(from, { text: '🔗 Link grup terdeteksi dan akan dihapus.' })
+            await sock.groupParticipantsUpdate(from, [sender], 'remove')
+          }
+        }
+
+        if (body.startsWith('.')) {
+          const [command, ...args] = body.trim().split(/ +/)
+          const text = body
+          const fallback = { text: '❌ Kamu bukan admin.' }
+
+          switch (command) {
+            case '.menuadmin':
+            case '.kick':
+            case '.add':
+            case '.promote':
+            case '.demote':
+            case '.tutup':
+            case '.buka':
+            case '.setname':
+            case '.setdesc':
+            case '.tagall':
+            case '.togglewarning':
+              if (!isGroup) return
+              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, fallback, { quoted: msg })
+              break
+          }
+
+          switch (command) {
+            case '.menuadmin':
+              await sock.sendMessage(from, {
+                text: `╭───❏ 🛠 ADMIN MENU ❏───╮
 │
 ├ ✦ .kick @user
 ├ ✦ .add <nomor>
@@ -138,12 +149,10 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
 📌 Khusus admin grup saja!
 🤖 Bot by: @verdancia.store
 ╰──────────────────────╯`
-
               })
               break
 
-
-          case '.kick': {
+            case '.kick': {
               const mention = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (mention.length) {
                 await sock.groupParticipantsUpdate(from, mention, 'remove')
@@ -153,20 +162,20 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
             }
 
             case '.add': {
-            const number = args[0]?.replace(/\D/g, '')
-            if (number) {
-              try {
-                await sock.groupParticipantsUpdate(from, [`${number}@s.whatsapp.net`], 'add')
-                await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
-              } catch (err) {
-                await sock.sendMessage(from, { text: `❌ Gagal menambahkan anggota. Mungkin nomor salah, tidak aktif, atau bot bukan admin.` })
-                await sendErrorToOwner(err, 'Gagal Menambahkan Anggota') // Kirim log error ke owner
+              const number = args[0]?.replace(/\D/g, '')
+              if (number) {
+                try {
+                  await sock.groupParticipantsUpdate(from, [`${number}@s.whatsapp.net`], 'add')
+                  await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
+                } catch (err) {
+                  await sock.sendMessage(from, { text: `❌ Gagal menambahkan anggota. Mungkin nomor salah, tidak aktif, atau bot bukan admin.` })
+                  await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
+                }
+              } else {
+                await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
               }
-            } else {
-              await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
+              break
             }
-            break
-          }
 
             case '.promote': {
               const promoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
@@ -214,38 +223,29 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
               break
             }
 
+            case '.tagall': {
+              const metadata = await sock.groupMetadata(from)
+              const mentions = metadata.participants.map(p => p.id)
+              const customText = text.trim().split(' ').slice(1).join(' ')
+              const messageText = customText.length > 0 ? customText : '📢 Semua member telah ditandai.'
+              await sock.sendMessage(from, { text: messageText, mentions }, { quoted: msg })
+              break
+            }
 
-          case '.tagall': {
-            const metadata = await sock.groupMetadata(from)
-            const mentions = metadata.participants.map(p => p.id)
+            case '.togglewarning':
+              autoWarning = !autoWarning
+              await sock.sendMessage(from, {
+                text: `✅ Auto warning telah *${autoWarning ? 'diaktifkan' : 'dinonaktifkan'}*.`
+              })
+              break
 
-            const customText = text.trim().split(' ').slice(1).join(' ')
-            const messageText = customText.length > 0 ? customText : '📢 Semua member telah ditandai.'
-
-            await sock.sendMessage(from, {
-              text: messageText,
-              mentions
-            }, { quoted: msg })
-            break
-          }
-          case '.togglewarning':
-            autoWarning = !autoWarning
-            await sock.sendMessage(from, {
-              text: `✅ Auto warning telah *${autoWarning ? 'diaktifkan' : 'dinonaktifkan'}*.`
-            })
-            break
-
-          case '.maintenance':
+            case '.maintenance':
               if (sender !== OWNER_NUMBER) return
-
               maintenance = !maintenance
               writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
-
               await sock.sendMessage(from, {
                 text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
               })
-
-              // Kirim notifikasi ke semua grup jika diaktifkan/dinonaktifkan
               try {
                 const allGroups = await sock.groupFetchAllParticipating()
                 for (const group of Object.values(allGroups)) {
@@ -258,13 +258,18 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
                   }
                 }
               } catch (err) {
-                logger.error('❌ Gagal mengirim pesan ke grup saat maintenance:', err)
+                logger.error('❌ Gagal broadcast maintenance:', err)
               }
               break
+          }
         }
+      } catch (err) {
+        logger.error('❌ Error di message handler:', err)
+        await sendErrorToOwner(err, 'Error di Message Handler')
       }
     })
 
+    // Interval Auto Warning
     setInterval(async () => {
       if (!autoWarning || warningCooldown || !sock) return
       warningCooldown = true
@@ -278,45 +283,32 @@ text: `╭───❏ 🛠 ADMIN MENU ❏───╮
           }
         }
       } catch (err) {
-        logger.error('Gagal mengirim warning:', err)
+        logger.error('Gagal kirim warning:', err)
       } finally {
         setTimeout(() => (warningCooldown = false), 30 * 60 * 1000)
       }
     }, 60 * 1000)
 
   } catch (error) {
-    logger.fatal(error, 'Error during connection')
+    logger.fatal('Error during connection:', error)
+    await sendErrorToOwner(error, 'Fatal Error saat Connect')
     if (!isRestarting) {
       isRestarting = true
       setTimeout(connectToWhatsApp, 10000)
     }
   }
 }
-    process.on('uncaughtException', async (err) => {
-  logger.error('❌ Uncaught Exception:', err)
 
-  try {
-    
-if (sock?.sendMessage) {
-    await sock.sendMessage(OWNER_NUMBER, {
-      text: `🚨 *Uncaught Exception*\n\n\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\`\`\``
-    })
-  } catch (e) {
-    logger.error('❌ Gagal mengirim error ke owner:', e)
-  }
+// Global Error Handling
+process.on('uncaughtException', async (err) => {
+  logger.error('❌ Uncaught Exception:', err)
+  await sendErrorToOwner(err, 'Uncaught Exception')
 })
 
 process.on('unhandledRejection', async (reason) => {
   logger.error('❌ Unhandled Rejection:', reason)
-
-  try {
-    await sock.sendMessage(OWNER_NUMBER, {
-      text: `🚨 *Unhandled Rejection*\n\n\`\`\`${(reason?.stack || reason?.toString()).slice(0, 4000)}\`\`\``
-    })
-  } catch (e) {
-    logger.error('❌ Gagal mengirim error ke owner:', e)
-  }
+  await sendErrorToOwner(reason, 'Unhandled Rejection')
 })
 
+// Start Bot
 connectToWhatsApp()
-
