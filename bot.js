@@ -251,29 +251,57 @@ async function connectToWhatsApp() {
               })
               break
 
-            case '.maintenance':
-              if (sender !== OWNER_NUMBER) return
-              maintenance = !maintenance
-              writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
-              await sock.sendMessage(from, {
-                text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
-              })
-              try {
-                const allGroups = await sock.groupFetchAllParticipating()
-                for (const group of Object.values(allGroups)) {
-                  if (allowedGroups.includes(group.id)) {
-                    await sock.sendMessage(group.id, {
-                      text: maintenance
-                        ? '⛔ Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.'
-                        : '✅ Bot telah kembali *aktif*. Silakan lanjutkan aktivitas seperti biasa.'
-                    })
-                  }
-                }
-              } catch (err) {
-                logger.error('❌ Gagal broadcast maintenance:', err)
-              }
-              break
-          }
+            case '.maintenance': {
+  if (from.endsWith('@g.us')) return
+  if (sender !== OWNER_NUMBER) return
+
+  const mode = args[0]?.toLowerCase()
+
+  if (mode === 'on') maintenance = true
+  else if (mode === 'off') maintenance = false
+  else if (!mode) {
+    // Hanya tampilkan tombol, tidak mengubah status
+    await sock.sendMessage(from, {
+      text: '🔧 Pilih status *maintenance*:',
+      buttons: [
+        { buttonId: '.maintenance on', buttonText: { displayText: 'Aktifkan' }, type: 1 },
+        { buttonId: '.maintenance off', buttonText: { displayText: 'Nonaktifkan' }, type: 1 },
+        { buttonId: '.maintenance', buttonText: { displayText: 'Cek Status' }, type: 1 }
+      ],
+      headerType: 1
+    })
+    break
+  } else {
+    // Jika bukan 'on', 'off', atau kosong → perintah tidak valid
+    await sock.sendMessage(from, {
+      text: '❌ Perintah tidak dikenali. Gunakan tombol atau ketik `.maintenance on` atau `.maintenance off`.'
+    })
+    break
+  }
+
+  writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
+
+  await sock.sendMessage(from, {
+    text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
+  })
+
+  try {
+    const allGroups = await sock.groupFetchAllParticipating()
+    for (const group of Object.values(allGroups)) {
+      if (allowedGroups.includes(group.id)) {
+        await sock.sendMessage(group.id, {
+          text: maintenance
+            ? '⛔ Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.'
+            : '✅ Bot telah kembali *aktif*. Silakan lanjutkan aktivitas seperti biasa.'
+        })
+      }
+    }
+  } catch (err) {
+    await sendErrorToOwner(err, 'Gagal Kirim Notifikasi Maintenance')
+  }
+
+  break
+}
         }
       } catch (err) {
         logger.error('❌ Error di message handler:', err)
