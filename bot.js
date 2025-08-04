@@ -156,7 +156,7 @@ async function connectToWhatsApp() {
               const mention = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (mention.length) {
                 await sock.groupParticipantsUpdate(from, mention, 'remove')
-                await sock.sendMessage(from, { text: '✅ Anggota berhasil dikeluarkan.' })
+                await sock.sendMessage(from, { text: 'Anggota berhasil dikeluarkan. ✅' })
               }
               break
             }
@@ -166,38 +166,26 @@ async function connectToWhatsApp() {
   if (!number) return await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
 
   const jid = `${number}@s.whatsapp.net`
+
   try {
     const result = await sock.groupParticipantsUpdate(from, [jid], 'add')
     const status = result[0]?.status
 
     if (status === '200') {
-      await sock.sendMessage(from, { text: '✅ Anggota berhasil ditambahkan.' })
+      await sock.sendMessage(from, { text: 'Anggota berhasil ditambahkan. ✅' })
     } else {
-      let reason = {
-        '403': '❌ Tidak diizinkan menambahkan (mungkin sudah keluar sebelumnya)',
-        '408': '❌ Nomor tidak ditemukan atau tidak aktif di WhatsApp',
-        '409': '❌ Sudah jadi anggota grup',
-        '500': '❌ Terjadi kesalahan dari server WhatsApp'
-      }[status] || `❌ Gagal menambahkan (kode: ${status})`
-
-      await sock.sendMessage(from, { text: reason })
-
-      // Jika masih memungkinkan, buatkan link undangan
-      if (status === '403') {
-        try {
-          const inviteCode = await sock.groupInviteCode(from)
-          await sock.sendMessage(from, {
-            text: `📨 Kirim link ini ke member:\nhttps://chat.whatsapp.com/${inviteCode}`
-          })
-        } catch {
-          await sock.sendMessage(from, { text: '⚠️ Gagal membuat link undangan.' })
-        }
-      }
+      // Fallback langsung: buat link undangan
+      const inviteCode = await sock.groupInviteCode(from)
+      await sock.sendMessage(from, {
+        text: `❌ Gagal menambahkan langsung.\n📨 Kirim link ini ke member:\nhttps://chat.whatsapp.com/${inviteCode}`
+      })
     }
   } catch (err) {
-    await sock.sendMessage(from, { text: `❌ Error: ${(err.message || '').slice(0, 100)}` })
+    // Kirim error hanya ke owner, bukan ke grup
+    await sock.sendMessage(from, { text: '❌ Gagal menambahkan anggota.' })
     await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
   }
+
   break
 }
 
