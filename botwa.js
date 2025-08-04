@@ -23,12 +23,53 @@ const logger = pino({
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
 const allowedGroups = ['120363419880680909@g.us']
 const maintenanceFile = './maintenance.json'
+const GIVEAWAY_FILE = './giveaway.json'
 
 let sock
 let isRestarting = false
 let autoWarning = false
 let warningCooldown = false
 let maintenance = false
+
+// === GIVEAWAY DATA & FUNCTIONS ===
+let giveawayData = {}
+if (existsSync(GIVEAWAY_FILE)) {
+  try {
+    giveawayData = JSON.parse(readFileSync(GIVEAWAY_FILE))
+  } catch {
+    giveawayData = {}
+  }
+}
+
+const saveGiveaway = () => {
+  writeFileSync(GIVEAWAY_FILE, JSON.stringify(giveawayData, null, 2))
+}
+
+function parseDuration(text) {
+  const regex = /(\d+d)?(\d+h)?(\d+m)?/i
+  const match = text.match(regex)
+  if (!match) return 0
+  let totalMs = 0
+  if (match[1]) totalMs += parseInt(match[1]) * 24 * 60 * 60 * 1000
+  if (match[2]) totalMs += parseInt(match[2]) * 60 * 60 * 1000
+  if (match[3]) totalMs += parseInt(match[3]) * 60 * 1000
+  return totalMs
+}
+
+function pickWinners(participants, count) {
+  if (participants.length <= count) return participants
+  const winners = []
+  const copy = [...participants]
+  while (winners.length < count && copy.length) {
+    const idx = Math.floor(Math.random() * copy.length)
+    winners.push(copy.splice(idx, 1)[0])
+  }
+  return winners
+}
+
+const activeGiveaway = (groupId) => giveawayData[groupId] && giveawayData[groupId].isActive
+
+// === END GIVEAWAY ===
 
 const isAdmin = async (groupId, userId, sock) => {
   try {
@@ -81,6 +122,30 @@ async function connectToWhatsApp() {
       maintenance = JSON.parse(readFileSync(maintenanceFile)).active
     }
 
+    // ====== Giveaway checker interval ======
+    setInterval(async () => {
+      if (!sock) return
+      const now = Date.now()
+      for (const [groupId, gdata] of Object.entries(giveawayData)) {
+        if (!gdata.isActive) continue
+        if (now >= gdata.endTime) {
+          gdata.isActive = false
+          const winners = pickWinners(gdata.participants, gdata.winnerCount)
+          const winnerMentions = winners.map(w => w)
+          const text = winners.length
+            ? `🎉 Giveaway *${gdata.description}* selesai!\n\n🏆 Pemenang:\n${winners.map(w => '@' + w.split('@')[0]).join('\n')}`
+            : `⚠️ Giveaway *${gdata.description}* selesai tapi tidak ada peserta.`
+
+          try {
+            await sock.sendMessage(groupId, { text, mentions: winnerMentions })
+          } catch (e) {
+            logger.error('Gagal umumkan pemenang giveaway:', e)
+          }
+          saveGiveaway()
+        }
+      }
+    }, 60 * 1000)
+
     sock.ev.on('messages.upsert', async ({ messages }) => {
       try {
         const msg = messages[0]
@@ -121,7 +186,8 @@ async function connectToWhatsApp() {
 
           const groupOnlyCommands = [
             '.admin', '.kick', '.add', '.promote', '.demote',
-            '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning'
+            '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning',
+            '.giveaway', '.joingiveaway', '.endgiveaway', '.listgiveaway' // tambah giveaway commands di sini
           ]
           if (groupOnlyCommands.includes(command)) {
             if (!isGroup) return
@@ -131,7 +197,7 @@ async function connectToWhatsApp() {
           switch (command) {
             case '.menuadmin':
               await sock.sendMessage(from, {
-                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add <nomor>\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway (comingsoon)\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
+                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add <nomor>\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\n├ ✦ .joingiveaway\n├ ✦ .listgiveaway\n├ ✦ .endgiveaway\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
               })
               break
 
@@ -273,6 +339,103 @@ async function connectToWhatsApp() {
                 })
                 break
               }
+            }
+
+            // ===== Giveaway commands =====
+            case '.giveaway': {
+              if (!isGroup) return
+              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh membuat giveaway.' }, { quoted: msg })
+
+              // Format: .giveaway Deskripsi | JumlahPemenang | Durasi (1d2h30m)
+              const params = text.slice(9).split(',').map(s => s.trim())
+              if (params.length !== 3) {
+                await sock.sendMessage(from, { text: '❌ Format salah.\n.giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\nContoh: .giveaway Hadiah Bot | 3 | 1d2h30m' })
+                break
+              }
+              const [description, winnerCountStr, durationStr] = params
+              const winnerCount = parseInt(winnerCountStr)
+              if (isNaN(winnerCount) || winnerCount < 1) {
+                await sock.sendMessage(from, { text: '❌ Jumlah pemenang harus angka lebih dari 0.' })
+                break
+              }
+
+              const durationMs = parseDuration(durationStr.toLowerCase())
+              if (durationMs <= 0) {
+                await sock.sendMessage(from, { text: '❌ Durasi tidak valid. Contoh: 1d2h30m' })
+                break
+              }
+
+              if (activeGiveaway(from)) {
+                await sock.sendMessage(from, { text: '❌ Sudah ada giveaway aktif di grup ini.' })
+                break
+              }
+
+              giveawayData[from] = {
+                description,
+                winnerCount,
+                endTime: Date.now() + durationMs,
+                participants: [],
+                isActive: true
+              }
+              saveGiveaway()
+
+              await sock.sendMessage(from, {
+                text: `🎉 Giveaway *${description}* dimulai!\n🏆 Pemenang: ${winnerCount}\n⏰ Durasi: ${durationStr}\n\nKirim .joingiveaway untuk ikut!`
+              })
+              break
+            }
+
+            case '.joingiveaway': {
+              if (!isGroup) return
+              if (!activeGiveaway(from)) {
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+                break
+              }
+
+              const g = giveawayData[from]
+              if (g.participants.includes(sender)) {
+                await sock.sendMessage(from, { text: '⚠️ Kamu sudah ikut giveaway ini.' })
+                break
+              }
+
+              g.participants.push(sender)
+              saveGiveaway()
+              await sock.sendMessage(from, { text: '✅ Kamu berhasil ikut giveaway! Semoga beruntung.' })
+              break
+            }
+
+            case '.endgiveaway': {
+              if (!isGroup) return
+              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh mengakhiri giveaway.' }, { quoted: msg })
+
+              if (!activeGiveaway(from)) {
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+                break
+              }
+
+              giveawayData[from].isActive = false
+              saveGiveaway()
+              await sock.sendMessage(from, { text: '⚠️ Giveaway telah dibatalkan oleh admin.' })
+              break
+            }
+
+            case '.listgiveaway': {
+              if (!isGroup) return
+              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh melihat daftar peserta.' }, { quoted: msg })
+
+              if (!activeGiveaway(from)) {
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+                break
+              }
+
+              const g = giveawayData[from]
+              if (g.participants.length === 0) {
+                await sock.sendMessage(from, { text: 'ℹ️ Belum ada peserta yang ikut giveaway.' })
+              } else {
+                const listText = g.participants.map((p, i) => `${i + 1}. @${p.split('@')[0]}`).join('\n')
+                await sock.sendMessage(from, { text: `📋 Daftar peserta giveaway:\n${listText}`, mentions: g.participants })
+              }
+              break
             }
           }
         }
