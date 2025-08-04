@@ -18,7 +18,7 @@ const logger = pino({
     target: 'pino-pretty',
     options: { colorize: true }
   },
-  level: 'silent'
+  level: 'info'
 })
 
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
