@@ -302,13 +302,7 @@ async function connectToWhatsApp() {
 
   break
 }
-        }
-      } catch (err) {
-        logger.error('❌ Error di message handler:', err)
-        await sendErrorToOwner(err, 'Error di Message Handler')
-      }
-    })
-
+   
     // Interval Auto Warning
     setInterval(async () => {
       if (!autoWarning || warningCooldown || !sock) return
