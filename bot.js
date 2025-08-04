@@ -114,13 +114,13 @@ async function connectToWhatsApp() {
           const fallback = { text: '❌ Kamu bukan admin.' }
 
           switch (command) {
-            case '.menuadmin':
+            case '.admin':
             case '.kick':
             case '.add':
             case '.promote':
             case '.demote':
-            case '.tutup':
-            case '.buka':
+            case '.close':
+            case '.open':
             case '.setname':
             case '.setdesc':
             case '.tagall':
@@ -139,15 +139,15 @@ async function connectToWhatsApp() {
 ├ ✦ .add <nomor>
 ├ ✦ .promote @user
 ├ ✦ .demote @user
-│
-├ ✦ .tutup / .buka
+├ ✦ .open (membuka grup) 
+├ ✦ .close (menutup grup)
 ├ ✦ .setname <nama grup>
 ├ ✦ .setdesc <deskripsi grup>
-│
+├ ✦ .giveaway (comingsoon)
 └ ✦ .tagall [pesan opsional]
 
 📌 Khusus admin grup saja!
-🤖 Bot by: @verdancia.store
+🤖 Bot by: @qieen.store
 ╰──────────────────────╯`
               })
               break
@@ -195,12 +195,12 @@ async function connectToWhatsApp() {
               break
             }
 
-            case '.tutup':
+            case '.close':
               await sock.groupSettingUpdate(from, 'announcement')
               await sock.sendMessage(from, { text: '🔒 Grup ditutup hanya admin yang bisa chat.' })
               break
 
-            case '.buka':
+            case '.open':
               await sock.groupSettingUpdate(from, 'not_announcement')
               await sock.sendMessage(from, { text: '🔓 Grup dibuka semua member bisa chat.' })
               break
