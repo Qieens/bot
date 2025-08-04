@@ -20,19 +20,16 @@ const logger = pino({
   level: 'info'
 })
 
-// === Konstanta Bot ===
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
 const allowedGroups = ['120363419880680909@g.us']
 const maintenanceFile = './maintenance.json'
 
-// === Variabel Global ===
 let sock
 let isRestarting = false
 let autoWarning = false
 let warningCooldown = false
 let maintenance = false
 
-// === Utilitas ===
 const isAdmin = async (groupId, userId, sock) => {
   try {
     if (!userId.endsWith('@s.whatsapp.net')) userId += '@s.whatsapp.net'
@@ -48,14 +45,13 @@ const isAdmin = async (groupId, userId, sock) => {
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
     await sock.sendMessage(OWNER_NUMBER, {
-      text: `🚨 *${label}*\n\n\\`\`\`${(err.stack || err.toString()).slice(0, 4000)}\\`\`\``
+      text: `🚨 *${label}*\n\n\\`\\`\\`${(err.stack || err.toString()).slice(0, 4000)}\\`\\`\\``
     })
   } catch (e) {
     logger.error('Gagal kirim log ke owner:', e)
   }
 }
 
-// === Fungsi Utama ===
 async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
