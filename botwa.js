@@ -45,7 +45,7 @@ const isAdmin = async (groupId, userId, sock) => {
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
     await sock.sendMessage(OWNER_NUMBER, {
-      text: `🚨 *${label}*\n\n\\`\\`\\`${(err.stack || err.toString()).slice(0, 4000)}\\`\\`\\``
+      text: `🚨 *${label}*\n\n\`\`\`\n${(err.stack || err.toString()).slice(0, 4000)}\n\`\`\``
     })
   } catch (e) {
     logger.error('Gagal kirim log ke owner:', e)
