@@ -339,8 +339,8 @@ async function connectToWhatsApp() {
                     if (allowedGroups.includes(group.id)) {
                       await sock.sendMessage(group.id, {
                         text: maintenance
-                          ? '⛔ *Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.*'
-                          : '✅ *Bot telah kembali ```aktif```. Silakan lanjutkan aktivitas seperti biasa.*'
+                          ? '⛔ *Bot sedang dalam mode* ```maintenance```. *Harap menunggu hingga bot aktif kembali.*'
+                          : '✅ *Bot telah kembali* ```aktif```. *Silakan lanjutkan aktivitas seperti biasa.*'
                       })
                     }
                   }
