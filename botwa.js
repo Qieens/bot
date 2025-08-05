@@ -197,7 +197,7 @@ async function connectToWhatsApp() {
           switch (command) {
             case '.menuadmin':
               await sock.sendMessage(from, {
-                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add <nomor>\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\n├ ✦ .joingiveaway\n├ ✦ .listgiveaway\n├ ✦ .endgiveaway\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
+                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add 62xxx\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway (deskripsi, pemenang, time)\n├ ✦ .joingiveaway\n├ ✦ .listgiveaway\n├ ✦ .endgiveaway\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
               })
               break
 
@@ -228,7 +228,6 @@ async function connectToWhatsApp() {
                   })
                 }
               } catch (err) {
-                await sock.sendMessage(from, { text: '❌ Gagal menambahkan anggota.' })
                 await sendErrorToOwner(err, 'Gagal Menambahkan Anggota')
               }
               break
@@ -341,10 +340,54 @@ async function connectToWhatsApp() {
               }
             }
 
+            case '.restart': {
+                if (from.endsWith('@g.us')) return // Hanya boleh via private chat
+                if (sender !== OWNER_NUMBER) return // Batasi ke owner saja
+
+                await sock.sendMessage(from, {
+                  text: `♻️ Sedang memulai proses *update dan restart*...`
+                })
+
+                const fileUrl = 'https://raw.githubusercontent.com/Qieens/bot/refs/heads/main/botwa.js' // Ganti sesuai GitHub kamu
+                const https = require('https')
+                const fs = require('fs')
+                const { exec } = require('child_process')
+
+                const file = fs.createWriteStream('botwa.js')
+
+                https.get(fileUrl, (response) => {
+                  if (response.statusCode !== 200) {
+                    return sock.sendMessage(from, {
+                      text: `❌ Gagal download dari GitHub.\nStatus: ${response.statusCode}`
+                    })
+                  }
+
+                  response.pipe(file)
+
+                  file.on('finish', () => {
+                    file.close()
+                    sock.sendMessage(from, {
+                      text: '✅ Update selesai.\n🔄 Bot akan *restart otomatis* dalam beberapa detik...'
+                    })
+
+                    exec('pm2 restart botwa') // Ganti sesuai nama proses kamu
+                  })
+                }).on('error', (err) => {
+                  sock.sendMessage(from, {
+                    text: `❌ Error saat download:\n${err.message}`
+                  })
+                })
+
+                break
+              }
+
+
             // ===== Giveaway commands =====
             case '.giveaway': {
               if (!isGroup) return
-              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh membuat giveaway.' }, { quoted: msg })
+              if (!(await isAdmin(from, sender, sock))) {
+                return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh membuat giveaway.' }, { quoted: msg })
+              }
 
               // Format: .giveaway Deskripsi | JumlahPemenang | Durasi (1d2h30m)
               const params = text.slice(9).split(',').map(s => s.trim())
@@ -352,6 +395,7 @@ async function connectToWhatsApp() {
                 await sock.sendMessage(from, { text: '❌ Format salah.\n.giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\nContoh: .giveaway Hadiah Bot | 3 | 1d2h30m' })
                 break
               }
+
               const [description, winnerCountStr, durationStr] = params
               const winnerCount = parseInt(winnerCountStr)
               if (isNaN(winnerCount) || winnerCount < 1) {
@@ -370,20 +414,34 @@ async function connectToWhatsApp() {
                 break
               }
 
+              const startTime = Date.now()
+              const endTime = startTime + durationMs
+
               giveawayData[from] = {
                 description,
                 winnerCount,
-                endTime: Date.now() + durationMs,
+                startTime,
+                endTime,
                 participants: [],
                 isActive: true
               }
               saveGiveaway()
 
+              const formatTime = (ts) => new Date(ts).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })
+
               await sock.sendMessage(from, {
-                text: `🎉 Giveaway *${description}* dimulai!\n🏆 Pemenang: ${winnerCount}\n⏰ Durasi: ${durationStr}\n\nKirim .joingiveaway untuk ikut!`
+                text:
+                  `🎉 *GIVEAWAY DIMULAI!*\n\n` +
+                  `📦 Deskripsi : *${description}*\n` +
+                  `🏆 Jumlah Pemenang : *${winnerCount}*\n` +
+                  `⏳ Durasi : *${durationStr}*\n` +
+                  `🕒 Mulai : ${formatTime(startTime)}\n` +
+                  `⏰ Berakhir : ${formatTime(endTime)}\n\n` +
+                  `📥 Ketik *.joingiveaway* untuk ikut berpartisipasi!`
               })
               break
             }
+
 
             case '.joingiveaway': {
               if (!isGroup) return
