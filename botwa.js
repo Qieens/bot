@@ -93,6 +93,23 @@ const sendErrorToOwner = async (err, label = 'Error') => {
   }
 }
 
+async function autoUpdateBot(sock, from) {
+  try {
+    const response = await fetch('https://raw.githubusercontent.com/Qieens/bot/main/botwa.js')
+    if (!response.ok) throw new Error(`HTTP Error ${response.status}`)
+
+    const updatedCode = await response.text()
+    writeFileSync('./botwa.js', updatedCode)
+
+    await sock.sendMessage(from, { text: '✅ Bot berhasil diperbarui. Restarting...' })
+
+    process.exit(0) // Akan restart otomatis kalau kamu pakai pm2 / shell loop
+  } catch (err) {
+    await sock.sendMessage(from, { text: `❌ Gagal memperbarui bot: ${err.message}` })
+    console.error('Auto Update Error:', err)
+  }
+}
+
 async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -341,45 +358,13 @@ async function connectToWhatsApp() {
             }
 
             case '.restart': {
-                if (from.endsWith('@g.us')) return // Hanya boleh via private chat
-                if (sender !== OWNER_NUMBER) return // Batasi ke owner saja
+              if (from.endsWith('@g.us')) return // Hanya bisa via chat pribadi
+              if (sender !== OWNER_NUMBER) return sock.sendMessage(from, { text: '❌ Hanya owner yang bisa me-restart bot.' })
 
-                await sock.sendMessage(from, {
-                  text: `♻️ Sedang memulai proses *update dan restart*...`
-                })
-
-                const fileUrl = 'https://raw.githubusercontent.com/Qieens/bot/refs/heads/main/botwa.js' // Ganti sesuai GitHub kamu
-                const https = import('https')
-                const fs = import('fs')
-                const { exec } = import('child_process')
-
-                const file = fs.createWriteStream('botwa.js')
-
-                https.get(fileUrl, (response) => {
-                  if (response.statusCode !== 200) {
-                    return sock.sendMessage(from, {
-                      text: `❌ Gagal download dari GitHub.\nStatus: ${response.statusCode}`
-                    })
-                  }
-
-                  response.pipe(file)
-
-                  file.on('finish', () => {
-                    file.close()
-                    sock.sendMessage(from, {
-                      text: '✅ Update selesai.\n🔄 Bot akan *restart otomatis* dalam beberapa detik...'
-                    })
-
-                    exec('pm2 restart botwa') // Ganti sesuai nama proses kamu
-                  })
-                }).on('error', (err) => {
-                  sock.sendMessage(from, {
-                    text: `❌ Error saat download:\n${err.message}`
-                  })
-                })
-
-                break
-              }
+              await sock.sendMessage(from, { text: '♻️ Mengunduh update terbaru dan me-restart bot...' })
+              await autoUpdateBot(sock, from)
+              break
+            }
 
 
             // ===== Giveaway commands =====
