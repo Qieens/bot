@@ -349,9 +349,9 @@ async function connectToWhatsApp() {
                 })
 
                 const fileUrl = 'https://raw.githubusercontent.com/Qieens/bot/refs/heads/main/botwa.js' // Ganti sesuai GitHub kamu
-                const https = require('https')
-                const fs = require('fs')
-                const { exec } = require('child_process')
+                const https = import('https')
+                const fs = import('fs')
+                const { exec } = import('child_process')
 
                 const file = fs.createWriteStream('botwa.js')
 
