@@ -189,10 +189,16 @@ async function connectToWhatsApp() {
         }
 
         if (isGroup && type === 'extendedTextMessage') {
-          const text = msg.message.extendedTextMessage?.text || ''
-          if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
-            await sock.sendMessage(from, { text: '🔗 Link grup terdeteksi dan akan dihapus.' })
-            await sock.groupParticipantsUpdate(from, [sender], 'remove')
+            const text = msg.message.extendedTextMessage?.text || ''
+        if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
+            await sock.sendMessage(from, {
+              delete: {
+                remoteJid: from,
+                fromMe: false,
+                id: msg.key.id,
+                participant: msg.key.participant || sender
+              }
+            })
           }
         }
 
