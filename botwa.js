@@ -199,12 +199,12 @@ async function connectToWhatsApp() {
         if (body.startsWith('.')) {
           const [command, ...args] = body.trim().split(/ +/)
           const text = body
-          const fallback = { text: '❌ Kamu bukan admin.' }
+          const fallback = { text: '*Kamu bukan admin!!*' }
 
           const groupOnlyCommands = [
             '.admin', '.kick', '.add', '.promote', '.demote',
             '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning',
-            '.giveaway', '.joingiveaway', '.endgiveaway', '.listgiveaway' // tambah giveaway commands di sini
+            '.giveaway','.endgiveaway', '.listgiveaway' // tambah giveaway commands di sini
           ]
           if (groupOnlyCommands.includes(command)) {
             if (!isGroup) return
@@ -212,9 +212,9 @@ async function connectToWhatsApp() {
           }
 
           switch (command) {
-            case '.menuadmin':
+            case '.menu':
               await sock.sendMessage(from, {
-                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add 62xxx\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n├ ✦ .giveaway (deskripsi, pemenang, time)\n├ ✦ .joingiveaway\n├ ✦ .listgiveaway\n├ ✦ .endgiveaway\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
+                text: `╭───❏ 🛠 ADMIN MENU ❏───╮\n│\n├ ✦ .kick @user\n├ ✦ .add 62xxx\n├ ✦ .promote @user\n├ ✦ .demote @user\n├ ✦ .open (membuka grup) \n├ ✦ .close (menutup grup)\n├ ✦ .setname <nama grup>\n├ ✦ .setdesc <deskripsi grup>\n│\n├ ✦ .giveaway (deskripsi, pemenang, time)\n├ ✦ .joingiveaway\n├ ✦ .listgiveaway\n├ ✦ .endgiveaway\n└ ✦ .tagall [pesan opsional]\n\n📌 Khusus admin grup saja!\n🤖 Bot by: @qieen.store\n╰──────────────────────╯`
               })
               break
 
@@ -222,14 +222,14 @@ async function connectToWhatsApp() {
               const mention = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (mention.length) {
                 await sock.groupParticipantsUpdate(from, mention, 'remove')
-                await sock.sendMessage(from, { text: 'Anggota berhasil dikeluarkan. ✅' })
+                await sock.sendMessage(from, { text: '*Anggota berhasil dikeluarkan.* ✅' })
               }
               break
             }
 
             case '.add': {
               const number = args[0]?.replace(/\D/g, '')
-              if (!number) return await sock.sendMessage(from, { text: `❌ Format salah. Gunakan: .add 628xxxxx` })
+              if (!number) return await sock.sendMessage(from, { text: `*Format salah. Gunakan: .add 628xxxxx*` })
 
               const jid = `${number}@s.whatsapp.net`
               try {
@@ -237,7 +237,7 @@ async function connectToWhatsApp() {
                 const status = result[0]?.status
 
                 if (status === '200') {
-                  await sock.sendMessage(from, { text: 'Anggota berhasil ditambahkan. ✅' })
+                  await sock.sendMessage(from, { text: '*Anggota berhasil ditambahkan.* ✅' })
                 } else {
                   const inviteCode = await sock.groupInviteCode(from)
                   await sock.sendMessage(from, {
@@ -254,7 +254,7 @@ async function connectToWhatsApp() {
               const promoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (promoteJid.length) {
                 await sock.groupParticipantsUpdate(from, promoteJid, 'promote')
-                await sock.sendMessage(from, { text: '✅ Anggota berhasil dipromosikan.' })
+                await sock.sendMessage(from, { text: '*Anggota berhasil di jadikan admin.*' })
               }
               break
             }
@@ -263,26 +263,26 @@ async function connectToWhatsApp() {
               const demoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (demoteJid.length) {
                 await sock.groupParticipantsUpdate(from, demoteJid, 'demote')
-                await sock.sendMessage(from, { text: '✅ Anggota berhasil didemosi.' })
+                await sock.sendMessage(from, { text: '*Anggota berhasil di demote.*' })
               }
               break
             }
 
             case '.close':
               await sock.groupSettingUpdate(from, 'announcement')
-              await sock.sendMessage(from, { text: '🔒 Grup ditutup hanya admin yang bisa chat.' })
+              await sock.sendMessage(from, { text: '🔒 *Grup ditutup hanya admin yang bisa chat.*' })
               break
 
             case '.open':
               await sock.groupSettingUpdate(from, 'not_announcement')
-              await sock.sendMessage(from, { text: '🔓 Grup dibuka semua member bisa chat.' })
+              await sock.sendMessage(from, { text: '🔓 *Grup dibuka semua member bisa chat.*' })
               break
 
             case '.setname': {
               const newName = text.split(' ').slice(1).join(' ')
               if (newName) {
                 await sock.groupUpdateSubject(from, newName)
-                await sock.sendMessage(from, { text: '✅ Nama grup berhasil diubah.' })
+                await sock.sendMessage(from, { text: '*Nama grup berhasil diubah.*' })
               }
               break
             }
@@ -291,7 +291,7 @@ async function connectToWhatsApp() {
               const newDesc = text.split(' ').slice(1).join(' ')
               if (newDesc) {
                 await sock.groupUpdateDescription(from, newDesc)
-                await sock.sendMessage(from, { text: '✅ Deskripsi grup berhasil diubah.' })
+                await sock.sendMessage(from, { text: '*Deskripsi grup berhasil diubah.*' })
               }
               break
             }
@@ -300,7 +300,7 @@ async function connectToWhatsApp() {
               const metadata = await sock.groupMetadata(from)
               const mentions = metadata.participants.map(p => p.id)
               const customText = text.trim().split(' ').slice(1).join(' ')
-              const messageText = customText || '📢 Semua member telah ditandai.'
+              const messageText = customText || ' '
               await sock.sendMessage(from, { text: messageText, mentions }, { quoted: msg })
               break
             }
@@ -339,8 +339,8 @@ async function connectToWhatsApp() {
                     if (allowedGroups.includes(group.id)) {
                       await sock.sendMessage(group.id, {
                         text: maintenance
-                          ? '⛔ Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.'
-                          : '✅ Bot telah kembali *aktif*. Silakan lanjutkan aktivitas seperti biasa.'
+                          ? '⛔ *Bot sedang dalam mode *maintenance*. Harap menunggu hingga bot aktif kembali.*'
+                          : '✅ *Bot telah kembali ```aktif```. Silakan lanjutkan aktivitas seperti biasa.*'
                       })
                     }
                   }
@@ -371,7 +371,7 @@ async function connectToWhatsApp() {
             case '.giveaway': {
               if (!isGroup) return
               if (!(await isAdmin(from, sender, sock))) {
-                return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh membuat giveaway.' }, { quoted: msg })
+                return sock.sendMessage(from, { text: '*Hanya admin yang boleh membuat giveaway.*' }, { quoted: msg })
               }
 
               // Format: .giveaway Deskripsi | JumlahPemenang | Durasi (1d2h30m)
@@ -384,13 +384,13 @@ async function connectToWhatsApp() {
               const [description, winnerCountStr, durationStr] = params
               const winnerCount = parseInt(winnerCountStr)
               if (isNaN(winnerCount) || winnerCount < 1) {
-                await sock.sendMessage(from, { text: '❌ Jumlah pemenang harus angka lebih dari 0.' })
+                await sock.sendMessage(from, { text: '*Jumlah pemenang harus angka lebih dari 0.*' })
                 break
               }
 
               const durationMs = parseDuration(durationStr.toLowerCase())
               if (durationMs <= 0) {
-                await sock.sendMessage(from, { text: '❌ Durasi tidak valid. Contoh: 1d2h30m' })
+                await sock.sendMessage(from, { text: '*Durasi tidak valid. Contoh: 1d2h30m*' })
                 break
               }
 
