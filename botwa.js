@@ -12,13 +12,11 @@ const {
   getContentType
 } = baileys
 
-// Logger konfigurasi: tampil rapi di console
 const logger = pino({
   transport: { target: 'pino-pretty', options: { colorize: true } },
   level: 'info'
 })
 
-// ======= KONFIGURASI =======
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
 const allowedGroups = ['120363419880680909@g.us']
 const maintenanceFile = './maintenance.json'
@@ -29,7 +27,7 @@ let maintenance = false
 let autoWarning = false
 let warningCooldown = false
 
-// ======= DATA GIVEAWAY =======
+// Load giveaway data
 let giveawayData = {}
 if (existsSync(GIVEAWAY_FILE)) {
   try {
@@ -38,29 +36,24 @@ if (existsSync(GIVEAWAY_FILE)) {
     giveawayData = {}
   }
 }
-const saveGiveaway = () => {
-  writeFileSync(GIVEAWAY_FILE, JSON.stringify(giveawayData, null, 2))
-}
+const saveGiveaway = () => writeFileSync(GIVEAWAY_FILE, JSON.stringify(giveawayData, null, 2))
 
-// ======= UTILS =======
-
-// Parsing durasi giveaway dari format 1d2h30m
+// Parsing duration like 1d2h30m
 function parseDuration(text) {
-  const regex = /(\d+d)?(\d+h)?(\d+m)?/i
-  const match = text.match(regex)
+  const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/i
+  const match = regex.exec(text)
   if (!match) return 0
-  let totalMs = 0
-  if (match[1]) totalMs += parseInt(match[1]) * 24 * 60 * 60 * 1000
-  if (match[2]) totalMs += parseInt(match[2]) * 60 * 60 * 1000
-  if (match[3]) totalMs += parseInt(match[3]) * 60 * 1000
-  return totalMs
+  let ms = 0
+  if (match[1]) ms += parseInt(match[1]) * 86400000
+  if (match[2]) ms += parseInt(match[2]) * 3600000
+  if (match[3]) ms += parseInt(match[3]) * 60000
+  return ms
 }
 
-// Mengacak dan memilih pemenang giveaway
 function pickWinners(participants, count) {
   if (participants.length <= count) return participants
-  const winners = []
   const copy = [...participants]
+  const winners = []
   while (winners.length < count && copy.length) {
     const idx = Math.floor(Math.random() * copy.length)
     winners.push(copy.splice(idx, 1)[0])
@@ -68,23 +61,26 @@ function pickWinners(participants, count) {
   return winners
 }
 
-// Mengecek giveaway aktif di grup
 const activeGiveaway = (groupId) => giveawayData[groupId]?.isActive === true
 
-// Cek apakah user admin di grup
 const isAdmin = async (groupId, userId, sock) => {
   try {
     if (!userId.endsWith('@s.whatsapp.net')) userId += '@s.whatsapp.net'
     const metadata = await sock.groupMetadata(groupId)
     const participant = metadata.participants.find(p => p.id === userId)
-    return participant?.admin === 'admin' || participant?.admin === 'superadmin'
+    if (!participant) {
+      logger.warn(`[isAdmin] Participant ${userId} tidak ditemukan di grup ${groupId}`)
+      return false
+    }
+    const adminStatus = participant.admin === 'admin' || participant.admin === 'superadmin'
+    logger.info(`[isAdmin] Cek admin ${userId} di grup ${groupId}: ${adminStatus}`)
+    return adminStatus
   } catch (error) {
     logger.error('Error checking admin status:', error)
     return false
   }
 }
 
-// Kirim error ke owner via WA
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
     await sock.sendMessage(OWNER_NUMBER, {
@@ -95,7 +91,6 @@ const sendErrorToOwner = async (err, label = 'Error') => {
   }
 }
 
-// Update otomatis bot dari GitHub (file botwa.js)
 async function autoUpdateBot(sock, from) {
   try {
     const response = await fetch('https://raw.githubusercontent.com/Qieens/bot/main/botwa.js')
@@ -103,14 +98,13 @@ async function autoUpdateBot(sock, from) {
     const updatedCode = await response.text()
     writeFileSync('./botwa.js', updatedCode)
     await sock.sendMessage(from, { text: '✅ Bot berhasil diperbarui. Restarting...' })
-    process.exit(0) // Restart otomatis jika pakai pm2 atau shell loop
+    process.exit(0)
   } catch (err) {
     await sock.sendMessage(from, { text: `❌ Gagal memperbarui bot: ${err.message}` })
     logger.error('Auto Update Error:', err)
   }
 }
 
-// ======= MAIN FUNCTION CONNECT =======
 async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
@@ -123,27 +117,25 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (qr) qrcode.generate(qr, { small: true })
 
-        if (connection === 'close') {
-          const shouldReconnect =
+      if (connection === 'close') {
+        const shouldReconnect =
           lastDisconnect?.error instanceof Boom ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut : true
-          logger.warn('Connection closed. Reconnecting:', shouldReconnect)
-            if (shouldReconnect) connectToWhatsApp()
-              } else if (connection === 'open') {
-                logger.info('✅ Bot connected')
+        logger.warn('Connection closed. Reconnecting:', shouldReconnect)
+        if (shouldReconnect) connectToWhatsApp()
+      } else if (connection === 'open') {
+        logger.info('✅ Bot connected')
+        setInterval(() => {
+          if (!sock) return
+          sock.sendPresenceUpdate('available').catch(() => {})
+        }, 5 * 60 * 1000)
+      }
+    })
 
-                setInterval(() => {
-                  if (!sock) return
-                  sock.sendPresenceUpdate('available').catch(() => {})
-                }, 5 * 60 * 1000) // tiap 5 menit ping
-              }
-            })
-
-    // Load status maintenance jika ada
     if (existsSync(maintenanceFile)) {
       maintenance = JSON.parse(readFileSync(maintenanceFile)).active
     }
 
-    // Interval cek giveaway, umumkan pemenang jika waktu habis
+    // Giveaway checker interval
     setInterval(async () => {
       if (!sock) return
       const now = Date.now()
@@ -167,14 +159,14 @@ async function connectToWhatsApp() {
       }
     }, 60 * 1000)
 
-    // Event pesan masuk
     sock.ev.on('messages.upsert', async ({ messages }) => {
       try {
         const msg = messages[0]
         if (!msg.message || msg.key.fromMe) return
 
         const from = msg.key.remoteJid
-        const sender = msg.key.participant || msg.key.remoteJid
+        const senderRaw = msg.key.participant || msg.key.remoteJid || ''
+        const sender = senderRaw.includes('@s.whatsapp.net') ? senderRaw : `${senderRaw}@s.whatsapp.net`
         const isGroup = from.endsWith('@g.us')
         const type = getContentType(msg.message)
         const body =
@@ -184,12 +176,12 @@ async function connectToWhatsApp() {
 
         if (maintenance && sender !== OWNER_NUMBER) return
 
-        // Auto keluar jika grup tidak di whitelist
+        // Auto keluar grup yang tidak di whitelist
         if (isGroup && !allowedGroups.includes(from)) {
           await sock.sendMessage(from, {
             text: '👋 Maaf, bot ini hanya diizinkan aktif di grup tertentu.\nKeluar otomatis dari grup ini.'
           })
-          logger.warn(`Grup ${from} tidak di whitelist. Bot akan keluar.`)
+          logger.warn(`Grup ${from} tidak di whitelist. Bot keluar.`)
           await sock.groupLeave(from)
           return
         }
@@ -206,18 +198,20 @@ async function connectToWhatsApp() {
 
         if (!body.startsWith('.')) return
 
-        // Parsing command dan args
         const [command, ...args] = body.trim().split(/ +/)
-        const fallback = { text: '*Kamu bukan admin!!*' }
         const groupOnlyCommands = [
           '.admin', '.kick', '.add', '.promote', '.demote',
           '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning',
-          '.giveaway','.endgiveaway', '.listgiveaway'
+          '.giveaway', '.endgiveaway', '.listgiveaway'
         ]
 
         if (groupOnlyCommands.includes(command)) {
           if (!isGroup) return
-          if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, fallback, { quoted: msg })
+          const admin = await isAdmin(from, sender, sock)
+          if (!admin) {
+            logger.info(`[COMMAND BLOCKED] User ${sender} bukan admin di grup ${from}, command: ${command}`)
+            return sock.sendMessage(from, { text: '*Kamu bukan admin!!*' }, { quoted: msg })
+          }
         }
 
         switch (command) {
@@ -349,11 +343,9 @@ async function connectToWhatsApp() {
             if (mode === 'on' || mode === 'off') {
               maintenance = mode === 'on'
               writeFileSync(maintenanceFile, JSON.stringify({ active: maintenance }, null, 2))
-
               await sock.sendMessage(from, {
                 text: `🔧 Mode maintenance *${maintenance ? 'diaktifkan' : 'dinonaktifkan'}*.`
               })
-
               try {
                 const allGroups = await sock.groupFetchAllParticipating()
                 for (const group of Object.values(allGroups)) {
@@ -385,14 +377,12 @@ async function connectToWhatsApp() {
             break
           }
 
-          // ===== GIVEAWAY =====
           case '.giveaway': {
             if (!isGroup) return
             if (!(await isAdmin(from, sender, sock))) {
               return sock.sendMessage(from, { text: '*Hanya admin yang boleh membuat giveaway.*' }, { quoted: msg })
             }
 
-            // Format: .giveaway Deskripsi | JumlahPemenang | Durasi (1d2h30m)
             const params = body.slice(9).split(',').map(s => s.trim())
             if (params.length !== 3) {
               await sock.sendMessage(from, { text: '❌ Format salah.\n.giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\nContoh: .giveaway Hadiah Bot | 3 | 1d2h30m' })
@@ -502,7 +492,7 @@ async function connectToWhatsApp() {
       }
     })
 
-    // Interval auto warning tiap 30 menit kalau diaktifkan
+    // Auto warning tiap 30 menit
     setInterval(async () => {
       if (!autoWarning || warningCooldown || !sock || maintenance) return
       warningCooldown = true
@@ -518,26 +508,25 @@ async function connectToWhatsApp() {
       } catch (err) {
         logger.error('Gagal kirim warning:', err)
       } finally {
-        setTimeout(() => (warningCooldown = false), 30 * 60 * 1000) // 30 menit cooldown
+        setTimeout(() => (warningCooldown = false), 30 * 60 * 1000)
       }
-    }, 60 * 1000) // cek tiap menit
+    }, 60 * 1000)
 
   } catch (error) {
     logger.fatal('Error during connection:', error)
     await sendErrorToOwner(error, 'Fatal Error saat Connect')
-    setTimeout(connectToWhatsApp, 10000) // coba reconnect 10 detik kemudian
+    setTimeout(connectToWhatsApp, 10000)
   }
 }
 
-// Tangani error uncaught dan unhandled rejections
 process.on('uncaughtException', async (err) => {
   logger.error('❌ Uncaught Exception:', err)
-  await sendErrorToOwner(err, 'Uncaught Exception')
-})
-process.on('unhandledRejection', async (reason) => {
-  logger.error('❌ Unhandled Rejection:', reason)
-  await sendErrorToOwner(reason, 'Unhandled Rejection')
+  if (sock) await sendErrorToOwner(err, 'Uncaught Exception')
 })
 
-// Mulai koneksi
+process.on('unhandledRejection', async (reason) => {
+  logger.error('❌ Unhandled Rejection:', reason)
+  if (sock) await sendErrorToOwner(reason, 'Unhandled Rejection')
+})
+
 connectToWhatsApp()
