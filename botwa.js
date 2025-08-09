@@ -181,6 +181,7 @@ async function connectToWhatsApp() {
         const senderRaw = msg.key.participant || msg.key.remoteJid || ''
         const sender = senderRaw.includes('@s.whatsapp.net') ? senderRaw : `${senderRaw}@s.whatsapp.net`
         const isGroup = from.endsWith('@g.us')
+        const msgType = getContentType(msg.message)
         const body = getMessageText(msg.message)
 
         if (maintenance && sender !== OWNER_NUMBER) return
