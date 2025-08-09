@@ -123,17 +123,20 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (qr) qrcode.generate(qr, { small: true })
 
-      if (connection === 'close') {
-        const shouldReconnect =
-          lastDisconnect?.error instanceof Boom
-            ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut
-            : true
-        logger.warn('Connection closed. Reconnecting:', shouldReconnect)
-        if (shouldReconnect) connectToWhatsApp()
-      } else if (connection === 'open') {
-        logger.info('✅ Bot connected')
-      }
-    })
+        if (connection === 'close') {
+          const shouldReconnect =
+          lastDisconnect?.error instanceof Boom ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut : true
+          logger.warn('Connection closed. Reconnecting:', shouldReconnect)
+            if (shouldReconnect) connectToWhatsApp()
+              } else if (connection === 'open') {
+                logger.info('✅ Bot connected')
+
+                setInterval(() => {
+                  if (!sock) return
+                  sock.sendPresenceUpdate('available').catch(() => {})
+                }, 5 * 60 * 1000) // tiap 5 menit ping
+              }
+            })
 
     // Load status maintenance jika ada
     if (existsSync(maintenanceFile)) {
