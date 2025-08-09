@@ -202,14 +202,18 @@ async function connectToWhatsApp() {
           return
         }
 
-       if (isGroup && type === 'extendedTextMessage') {
+      if (isGroup && type === 'extendedTextMessage') {
         const text = msg.message.extendedTextMessage?.text || ''
         if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
           await sock.sendMessage(from, {
-            delete: msg.key
+            protocolMessage: {
+              key: msg.key,
+              type: 0
+            }
           })
         }
       }
+
 
         if (body.startsWith('.')) {
           const [command, ...args] = body.trim().split(/ +/)
