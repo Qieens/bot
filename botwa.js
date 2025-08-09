@@ -65,7 +65,12 @@ const activeGiveaway = (groupId) => giveawayData[groupId]?.isActive === true
 
 const isAdmin = async (groupId, userId, sock) => {
   try {
-    if (!userId.endsWith('@s.whatsapp.net')) userId += '@s.whatsapp.net'
+    if (userId.includes('@')) {
+      userId = userId.split('@')[0] + '@s.whatsapp.net'
+    } else {
+      userId = userId + '@s.whatsapp.net'
+    }
+
     const metadata = await sock.groupMetadata(groupId)
     const participant = metadata.participants.find(p => p.id === userId)
     if (!participant) {
@@ -80,6 +85,7 @@ const isAdmin = async (groupId, userId, sock) => {
     return false
   }
 }
+
 
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
