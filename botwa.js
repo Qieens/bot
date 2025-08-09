@@ -169,7 +169,7 @@ async function connectToWhatsApp() {
         const senderRaw = msg.key.participant || msg.key.remoteJid || ''
         const sender = senderRaw.includes('@s.whatsapp.net') ? senderRaw : `${senderRaw}@s.whatsapp.net`
         const isGroup = from.endsWith('@g.us')
-        const type = getContentType(msg.message)
+        const messagetype = getContentType(msg.message)
         const body =
           type === 'conversation'
             ? msg.message.conversation
@@ -386,7 +386,7 @@ async function connectToWhatsApp() {
 
             const params = body.slice(9).split(',').map(s => s.trim())
             if (params.length !== 3) {
-              await sock.sendMessage(from, { text: '❌ Format salah.\n.giveaway <deskripsi> | <jumlah_pemenang> | <durasi>\nContoh: .giveaway Hadiah Bot | 3 | 1d2h30m' })
+              await sock.sendMessage(from, { text: '❌ Format salah.\n.giveaway <deskripsi> , <jumlah_pemenang> , <durasi>\nContoh: .giveaway Hadiah Bot , 3 , 1d2h30m' })
               break
             }
 
