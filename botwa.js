@@ -12,20 +12,25 @@ const {
   getContentType
 } = baileys
 
+// Logger yang tampilkan info penting dan warna
 const logger = pino({
   transport: { target: 'pino-pretty', options: { colorize: true } },
   level: 'info'
 })
 
+// Nomor owner (format jid)
 const OWNER_NUMBER = '628975539822@s.whatsapp.net'
+// Grup yang diizinkan bot untuk aktif
 const allowedGroups = ['120363419880680909@g.us']
+// File untuk simpan status maintenance
 const maintenanceFile = './maintenance.json'
+// File untuk data giveaway
 const GIVEAWAY_FILE = './giveaway.json'
 
-let sock
-let maintenance = false
+let sock // socket WhatsApp global
+let maintenance = false // flag maintenance mode
 
-// Load giveaway data
+// Load data giveaway dari file jika ada
 let giveawayData = {}
 if (existsSync(GIVEAWAY_FILE)) {
   try {
@@ -34,8 +39,11 @@ if (existsSync(GIVEAWAY_FILE)) {
     giveawayData = {}
   }
 }
+
+// Fungsi simpan data giveaway ke file
 const saveGiveaway = () => writeFileSync(GIVEAWAY_FILE, JSON.stringify(giveawayData, null, 2))
 
+// Fungsi parse durasi giveaway (format: 1d2h30m) ke milidetik
 function parseDuration(text) {
   const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/i
   const match = regex.exec(text)
@@ -47,6 +55,7 @@ function parseDuration(text) {
   return ms
 }
 
+// Fungsi pilih pemenang secara acak tanpa duplikat
 function pickWinners(participants, count) {
   if (participants.length <= count) return participants
   const copy = [...participants]
@@ -58,17 +67,16 @@ function pickWinners(participants, count) {
   return winners
 }
 
+// Cek apakah giveaway aktif di grup tertentu
 const activeGiveaway = (groupId) => giveawayData[groupId]?.isActive === true
 
+// Fungsi cek apakah user adalah admin di grup
 async function isAdmin(groupId, userId, sock) {
   try {
     if (!userId.includes('@')) userId = userId + '@s.whatsapp.net'
     const metadata = await sock.groupMetadata(groupId)
-    console.log('Group participants:', metadata.participants)
     const participant = metadata.participants.find(p => p.id === userId)
-    console.log('Participant found:', participant)
     if (!participant) return false
-    console.log('Participant admin status:', participant.admin)
     return participant.admin === 'admin' || participant.admin === 'superadmin'
   } catch (err) {
     console.error('Error isAdmin:', err)
@@ -76,6 +84,7 @@ async function isAdmin(groupId, userId, sock) {
   }
 }
 
+// Kirim pesan error ke owner (bisa digunakan untuk debug)
 const sendErrorToOwner = async (err, label = 'Error') => {
   try {
     await sock.sendMessage(OWNER_NUMBER, {
@@ -84,6 +93,7 @@ const sendErrorToOwner = async (err, label = 'Error') => {
   } catch {}
 }
 
+// Ambil teks pesan dari berbagai tipe pesan WA
 function getMessageText(message) {
   const type = getContentType(message)
   if (type === 'conversation') return message.conversation || ''
@@ -92,6 +102,7 @@ function getMessageText(message) {
   return ''
 }
 
+// Fungsi update otomatis bot dari GitHub
 async function autoUpdateBot(sock, from) {
   try {
     const response = await fetch('https://raw.githubusercontent.com/Qieens/bot/main/botwa.js')
@@ -105,15 +116,20 @@ async function autoUpdateBot(sock, from) {
   }
 }
 
+// Fungsi utama koneksi dan event handling WhatsApp
 async function connectToWhatsApp() {
   try {
+    // Setup autentikasi multi file
     const { state, saveCreds } = await useMultiFileAuthState('auth')
     const { version } = await fetchLatestBaileysVersion()
 
+    // Buat socket WhatsApp dengan versi terbaru dan logger
     sock = makeWASocket({ version, logger, auth: state })
 
+    // Simpan kredensial saat update
     sock.ev.on('creds.update', saveCreds)
 
+    // Handle koneksi update, reconnect, dan QR code
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (qr) qrcode.generate(qr, { small: true })
       if (connection === 'close') {
@@ -125,10 +141,12 @@ async function connectToWhatsApp() {
       }
     })
 
+    // Load status maintenance jika ada
     if (existsSync(maintenanceFile)) {
       maintenance = JSON.parse(readFileSync(maintenanceFile)).active
     }
 
+    // Interval cek giveaway tiap menit
     setInterval(async () => {
       if (!sock) return
       const now = Date.now()
@@ -151,6 +169,7 @@ async function connectToWhatsApp() {
       }
     }, 60 * 1000)
 
+    // Handler pesan masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       try {
         if (type !== 'notify') return
@@ -164,8 +183,10 @@ async function connectToWhatsApp() {
         const isGroup = from.endsWith('@g.us')
         const body = getMessageText(msg.message)
 
+        // Maintenance mode kecuali owner
         if (maintenance && sender !== OWNER_NUMBER) return
 
+        // Hanya grup tertentu yang boleh digunakan
         if (isGroup && !allowedGroups.includes(from)) {
           await sock.sendMessage(from, {
             text: '👋 Maaf, bot ini hanya aktif di grup tertentu. Keluar otomatis.'
@@ -174,8 +195,8 @@ async function connectToWhatsApp() {
           return
         }
 
+        // Anti link invite group kecuali admin
         if (isGroup) {
-          // Anti link group invite kecuali admin
           const msgType = getContentType(msg.message)
           const text = body
           if (msgType === 'extendedTextMessage' && /chat\.whatsapp\.com\//i.test(text)) {
@@ -187,6 +208,7 @@ async function connectToWhatsApp() {
           }
         }
 
+        // Command harus diawali '.'
         if (!body.startsWith('.')) return
 
         const [command, ...args] = body.trim().split(/ +/)
@@ -208,6 +230,7 @@ async function connectToWhatsApp() {
           '.togglewarning'
         ]
 
+        // Validasi admin untuk command grup
         if (groupOnlyCommands.includes(command)) {
           if (!isGroup) return
           if (!(await isAdmin(from, sender, sock))) {
@@ -215,6 +238,7 @@ async function connectToWhatsApp() {
           }
         }
 
+        // Proses command
         switch (command) {
           case '.menu':
             await sock.sendMessage(from, {
@@ -330,7 +354,6 @@ async function connectToWhatsApp() {
           }
 
           case '.togglewarning':
-            // Jika mau implementasi, kamu bisa tambah logika di sini
             await sock.sendMessage(from, { text: '⚠️ Fitur togglewarning belum diaktifkan.' })
             break
 
@@ -503,8 +526,10 @@ async function connectToWhatsApp() {
       }
     })
   } catch (error) {
+    // Reconnect jika gagal koneksi awal
     setTimeout(connectToWhatsApp, 5000)
   }
 }
 
+// Mulai koneksi bot
 connectToWhatsApp()
