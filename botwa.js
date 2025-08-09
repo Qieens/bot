@@ -31,6 +31,19 @@ let autoWarning = false
 let warningCooldown = false
 let maintenance = false
 
+// === Fungsi normalizeJid untuk konsistensi JID ===
+function normalizeJid(jid) {
+  if (!jid) return jid
+  jid = jid.toLowerCase()
+  if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@g.us')) {
+    return jid
+  }
+  if (/^\d+$/.test(jid)) {
+    return jid + '@s.whatsapp.net'
+  }
+  return jid
+}
+
 // === GIVEAWAY DATA & FUNCTIONS ===
 let giveawayData = {}
 if (existsSync(GIVEAWAY_FILE)) {
@@ -73,7 +86,8 @@ const activeGiveaway = (groupId) => giveawayData[groupId] && giveawayData[groupI
 
 const isAdmin = async (groupId, userId, sock) => {
   try {
-    if (!userId.endsWith('@s.whatsapp.net')) userId += '@s.whatsapp.net'
+    groupId = normalizeJid(groupId)
+    userId = normalizeJid(userId)
     const metadata = await sock.groupMetadata(groupId)
     const participant = metadata.participants.find(p => p.id === userId)
     return participant?.admin === 'admin' || participant?.admin === 'superadmin'
@@ -168,8 +182,8 @@ async function connectToWhatsApp() {
         const msg = messages[0]
         if (!msg.message || msg.key.fromMe) return
 
-        const from = msg.key.remoteJid
-        const sender = msg.key.participant || msg.key.remoteJid
+        const from = normalizeJid(msg.key.remoteJid)
+        const sender = normalizeJid(msg.key.participant || msg.key.remoteJid)
         const isGroup = from.endsWith('@g.us')
         const type = getContentType(msg.message)
         const body =
@@ -204,7 +218,7 @@ async function connectToWhatsApp() {
           const groupOnlyCommands = [
             '.admin', '.kick', '.add', '.promote', '.demote',
             '.close', '.open', '.setname', '.setdesc', '.tagall', '.togglewarning',
-            '.giveaway','.endgiveaway', '.listgiveaway' // tambah giveaway commands di sini
+            '.giveaway','.endgiveaway', '.listgiveaway'
           ]
           if (groupOnlyCommands.includes(command)) {
             if (!isGroup) return
@@ -221,7 +235,7 @@ async function connectToWhatsApp() {
             case '.kick': {
               const mention = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
               if (mention.length) {
-                await sock.groupParticipantsUpdate(from, mention, 'remove')
+                await sock.groupParticipantsUpdate(from, mention.map(normalizeJid), 'remove')
                 await sock.sendMessage(from, { text: '*Anggota berhasil dikeluarkan.* ✅' })
               }
               break
@@ -231,7 +245,7 @@ async function connectToWhatsApp() {
               const number = args[0]?.replace(/\D/g, '')
               if (!number) return await sock.sendMessage(from, { text: `*Format salah. Gunakan: .add 628xxxxx*` })
 
-              const jid = `${number}@s.whatsapp.net`
+              const jid = normalizeJid(number)
               try {
                 const result = await sock.groupParticipantsUpdate(from, [jid], 'add')
                 const status = result[0]?.status
@@ -251,7 +265,7 @@ async function connectToWhatsApp() {
             }
 
             case '.promote': {
-              const promoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
+              const promoteJid = (msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []).map(normalizeJid)
               if (promoteJid.length) {
                 await sock.groupParticipantsUpdate(from, promoteJid, 'promote')
                 await sock.sendMessage(from, { text: '*Anggota berhasil di jadikan admin.*' })
@@ -260,7 +274,7 @@ async function connectToWhatsApp() {
             }
 
             case '.demote': {
-              const demoteJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []
+              const demoteJid = (msg.message.extendedTextMessage?.contextInfo?.mentionedJid || []).map(normalizeJid)
               if (demoteJid.length) {
                 await sock.groupParticipantsUpdate(from, demoteJid, 'demote')
                 await sock.sendMessage(from, { text: '*Anggota berhasil di demote.*' })
@@ -313,7 +327,7 @@ async function connectToWhatsApp() {
               break
 
             case '.maintenance': {
-              if (from.endsWith('@g.us')) return
+              if (!from.endsWith('@s.whatsapp.net')) return // hanya chat pribadi
               if (sender !== OWNER_NUMBER) return
 
               const mode = args[0]?.toLowerCase()
@@ -358,7 +372,7 @@ async function connectToWhatsApp() {
             }
 
             case '.restart': {
-              if (from.endsWith('@g.us')) return // Hanya bisa via chat pribadi
+              if (!from.endsWith('@s.whatsapp.net')) return // Hanya bisa via chat pribadi
               if (sender !== OWNER_NUMBER) return sock.sendMessage(from, { text: '❌ Hanya owner yang bisa me-restart bot.' })
 
               await sock.sendMessage(from, { text: '♻️ Mengunduh update terbaru dan me-restart bot...' })
@@ -431,100 +445,76 @@ async function connectToWhatsApp() {
             case '.joingiveaway': {
               if (!isGroup) return
               if (!activeGiveaway(from)) {
-                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif saat ini.' })
                 break
               }
-
-              const g = giveawayData[from]
-              if (g.participants.includes(sender)) {
-                await sock.sendMessage(from, { text: '⚠️ Kamu sudah ikut giveaway ini.' })
+              const participants = giveawayData[from].participants
+              if (participants.includes(sender)) {
+                await sock.sendMessage(from, { text: '⚠️ Kamu sudah terdaftar sebagai peserta giveaway ini.' })
                 break
               }
-
-              g.participants.push(sender)
+              participants.push(sender)
               saveGiveaway()
-              await sock.sendMessage(from, { text: '✅ Kamu berhasil ikut giveaway! Semoga beruntung.' })
-              break
-            }
-
-            case '.endgiveaway': {
-              if (!isGroup) return
-              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh mengakhiri giveaway.' }, { quoted: msg })
-
-              if (!activeGiveaway(from)) {
-                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
-                break
-              }
-
-              giveawayData[from].isActive = false
-              saveGiveaway()
-              await sock.sendMessage(from, { text: '⚠️ Giveaway telah dibatalkan oleh admin.' })
+              await sock.sendMessage(from, { text: '✅ Kamu berhasil ikut giveaway! Semoga beruntung!' })
               break
             }
 
             case '.listgiveaway': {
               if (!isGroup) return
-              if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh melihat daftar peserta.' }, { quoted: msg })
-
+              if (!(await isAdmin(from, sender, sock))) {
+                await sock.sendMessage(from, { text: '*Hanya admin yang dapat melihat peserta giveaway.*' })
+                break
+              }
               if (!activeGiveaway(from)) {
-                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif.' })
+                break
+              }
+              const participants = giveawayData[from].participants
+              const list = participants.map((p, i) => `${i + 1}. @${p.split('@')[0]}`).join('\n') || '-'
+              await sock.sendMessage(from, {
+                text: `📋 Daftar peserta giveaway:\n${list}`,
+                mentions: participants
+              })
+              break
+            }
+
+            case '.endgiveaway': {
+              if (!isGroup) return
+              if (!(await isAdmin(from, sender, sock))) {
+                await sock.sendMessage(from, { text: '*Hanya admin yang boleh mengakhiri giveaway.*' })
+                break
+              }
+              if (!activeGiveaway(from)) {
+                await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif.' })
                 break
               }
 
-              const g = giveawayData[from]
-              if (g.participants.length === 0) {
-                await sock.sendMessage(from, { text: 'ℹ️ Belum ada peserta yang ikut giveaway.' })
-              } else {
-                const listText = g.participants.map((p, i) => `${i + 1}. @${p.split('@')[0]}`).join('\n')
-                await sock.sendMessage(from, { text: `📋 Daftar peserta giveaway:\n${listText}`, mentions: g.participants })
-              }
+              giveawayData[from].isActive = false
+              saveGiveaway()
+
+              const winners = pickWinners(giveawayData[from].participants, giveawayData[from].winnerCount)
+              const winnerMentions = winners.map(w => w)
+              const text = winners.length
+                ? `🎉 Giveaway *${giveawayData[from].description}* selesai!\n\n🏆 Pemenang:\n${winners.map(w => '@' + w.split('@')[0]).join('\n')}`
+                : `⚠️ Giveaway *${giveawayData[from].description}* selesai tapi tidak ada peserta.`
+
+              await sock.sendMessage(from, { text, mentions: winnerMentions })
               break
             }
+
+            default:
+              break
           }
         }
       } catch (err) {
-        logger.error('Gagal memproses pesan:', err)
-        await sendErrorToOwner(err, 'Message Handling Error')
+        logger.error('Error handling message:', err)
+        await sendErrorToOwner(err, 'Error handling message')
       }
     })
-
-    setInterval(async () => {
-      if (!autoWarning || warningCooldown || !sock || maintenance) return
-      warningCooldown = true
-      try {
-        const groups = await sock.groupFetchAllParticipating()
-        for (const group of Object.values(groups)) {
-          if (allowedGroups.includes(group.id)) {
-            await sock.sendMessage(group.id, {
-              text: '⚠️ Demi keamanan, mohon selalu gunakan *Midman Admin* saat transaksi di grup ini.'
-            })
-          }
-        }
-      } catch (err) {
-        logger.error('Gagal kirim warning:', err)
-      } finally {
-        setTimeout(() => (warningCooldown = false), 30 * 60 * 1000)
-      }
-    }, 60 * 1000)
-
-  } catch (error) {
-    logger.fatal('Error during connection:', error)
-    await sendErrorToOwner(error, 'Fatal Error saat Connect')
-    if (!isRestarting) {
-      isRestarting = true
-      setTimeout(connectToWhatsApp, 10000)
-    }
+  } catch (err) {
+    logger.error('Error starting bot:', err)
+    await sendErrorToOwner(err, 'Error starting bot')
   }
 }
-
-process.on('uncaughtException', async (err) => {
-  logger.error('❌ Uncaught Exception:', err)
-  await sendErrorToOwner(err, 'Uncaught Exception')
-})
-
-process.on('unhandledRejection', async (reason) => {
-  logger.error('❌ Unhandled Rejection:', reason)
-  await sendErrorToOwner(reason, 'Unhandled Rejection')
-})
 
 connectToWhatsApp()
