@@ -202,13 +202,14 @@ async function connectToWhatsApp() {
           return
         }
 
-        if (isGroup && type === 'extendedTextMessage') {
-          const text = msg.message.extendedTextMessage?.text || ''
-          if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
-            await sock.sendMessage(from, { text: '🔗 Link grup terdeteksi dan akan dihapus.' })
-            await sock.groupParticipantsUpdate(from, [sender], 'remove')
-          }
+       if (isGroup && type === 'extendedTextMessage') {
+        const text = msg.message.extendedTextMessage?.text || ''
+        if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
+          await sock.sendMessage(from, {
+            delete: msg.key
+          })
         }
+      }
 
         if (body.startsWith('.')) {
           const [command, ...args] = body.trim().split(/ +/)
