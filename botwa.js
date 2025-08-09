@@ -159,23 +159,24 @@ async function connectToWhatsApp() {
       }
     }, 60 * 1000)
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
+    sock.ev.on('messages.upsert', async ({ messages, type: upsertType }) => {
       try {
         if (upsertType !== 'notify') return
+    
         const msg = messages[0]
         if (!msg.message || msg.key.fromMe) return
-
+    
         const from = msg.key.remoteJid
         const senderRaw = msg.key.participant || msg.key.remoteJid || ''
         const sender = senderRaw.includes('@s.whatsapp.net') ? senderRaw : `${senderRaw}@s.whatsapp.net`
         const isGroup = from.endsWith('@g.us')
-        const messagetype = getContentType(msg.message)
+        const type = getContentType(msg.message)
         const body =
           type === 'conversation'
             ? msg.message.conversation
             : msg.message[type]?.text || ''
 
-        if (maintenance && sender !== OWNER_NUMBER) return
+    if (maintenance && sender !== OWNER_NUMBER) return
 
         // Auto keluar grup yang tidak di whitelist
         if (isGroup && !allowedGroups.includes(from)) {
