@@ -161,6 +161,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
       try {
+        if (type !== 'notify') return
         const msg = messages[0]
         if (!msg.message || msg.key.fromMe) return
 
