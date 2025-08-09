@@ -64,10 +64,14 @@ async function isAdmin(groupId, userId, sock) {
   try {
     if (!userId.includes('@')) userId = userId + '@s.whatsapp.net'
     const metadata = await sock.groupMetadata(groupId)
+    console.log('Group participants:', metadata.participants)
     const participant = metadata.participants.find(p => p.id === userId)
+    console.log('Participant found:', participant)
     if (!participant) return false
+    console.log('Participant admin status:', participant.admin)
     return participant.admin === 'admin' || participant.admin === 'superadmin'
-  } catch {
+  } catch (err) {
+    console.error('Error isAdmin:', err)
     return false
   }
 }
@@ -201,7 +205,6 @@ async function connectToWhatsApp() {
           '.giveaway',
           '.endgiveaway',
           '.listgiveaway',
-          '.joingiveaway',
           '.togglewarning'
         ]
 
