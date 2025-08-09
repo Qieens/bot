@@ -73,7 +73,7 @@ const activeGiveaway = (groupId) => giveawayData[groupId] && giveawayData[groupI
 
 const isAdmin = async (groupId, userId, sock) => {
   try {
-    if (!userId.endsWith('s.whatsapp.net')) userId += 's.whatsapp.net'
+    if (!userId.endsWith('@s.whatsapp.net')) userId += '@s.whatsapp.net'
     const metadata = await sock.groupMetadata(groupId)
     const participant = metadata.participants.find(p => p.id === userId)
     return participant?.admin === 'admin' || participant?.admin === 'superadmin'
