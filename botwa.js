@@ -91,6 +91,15 @@ const sendErrorToOwner = async (err, label = 'Error') => {
   }
 }
 
+// Helper untuk ambil teks pesan dengan aman
+function getMessageText(message) {
+  const type = getContentType(message)
+  if (type === 'conversation') return message.conversation || ''
+  if (type === 'extendedTextMessage') return message.extendedTextMessage?.text || ''
+  if (type === 'text') return message.text || ''
+  return ''
+}
+
 async function autoUpdateBot(sock, from) {
   try {
     const response = await fetch('https://raw.githubusercontent.com/Qieens/bot/main/botwa.js')
@@ -121,7 +130,9 @@ async function connectToWhatsApp() {
         const shouldReconnect =
           lastDisconnect?.error instanceof Boom ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut : true
         logger.warn('Connection closed. Reconnecting:', shouldReconnect)
-        if (shouldReconnect) connectToWhatsApp()
+        if (shouldReconnect) {
+          setTimeout(() => connectToWhatsApp(), 5000) // delay reconnect 5 detik
+        }
       } else if (connection === 'open') {
         logger.info('✅ Bot connected')
         setInterval(() => {
@@ -162,21 +173,17 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async ({ messages, type: upsertType }) => {
       try {
         if (upsertType !== 'notify') return
-    
+
         const msg = messages[0]
         if (!msg.message || msg.key.fromMe) return
-    
+
         const from = msg.key.remoteJid
         const senderRaw = msg.key.participant || msg.key.remoteJid || ''
         const sender = senderRaw.includes('@s.whatsapp.net') ? senderRaw : `${senderRaw}@s.whatsapp.net`
         const isGroup = from.endsWith('@g.us')
-        const type = getContentType(msg.message)
-        const body =
-          type === 'conversation'
-            ? msg.message.conversation
-            : msg.message[type]?.text || ''
+        const body = getMessageText(msg.message)
 
-    if (maintenance && sender !== OWNER_NUMBER) return
+        if (maintenance && sender !== OWNER_NUMBER) return
 
         // Auto keluar grup yang tidak di whitelist
         if (isGroup && !allowedGroups.includes(from)) {
@@ -189,7 +196,7 @@ async function connectToWhatsApp() {
         }
 
         // Anti link grup kecuali admin
-        if (isGroup && type === 'extendedTextMessage') {
+        if (isGroup && getContentType(msg.message) === 'extendedTextMessage') {
           const text = msg.message.extendedTextMessage?.text || ''
           if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
             await sock.sendMessage(from, { text: '🔗 Link grup terdeteksi dan akan dihapus.' })
@@ -333,7 +340,7 @@ async function connectToWhatsApp() {
             break
 
           case '.maintenance': {
-            if (isGroup) return
+            if (isGroup) return await sock.sendMessage(from, { text: '❌ Command ini hanya untuk chat pribadi dengan owner.' })
             if (sender !== OWNER_NUMBER) return
             const mode = args[0]?.toLowerCase()
             if (!mode) {
@@ -443,92 +450,78 @@ async function connectToWhatsApp() {
               await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
               break
             }
-            const g = giveawayData[from]
-            if (g.participants.includes(sender)) {
-              await sock.sendMessage(from, { text: '⚠️ Kamu sudah ikut giveaway ini.' })
+            const gdata = giveawayData[from]
+            if (gdata.participants.includes(sender)) {
+              await sock.sendMessage(from, { text: '⚠️ Kamu sudah terdaftar sebagai peserta giveaway.' })
               break
             }
-            g.participants.push(sender)
+            gdata.participants.push(sender)
             saveGiveaway()
-            await sock.sendMessage(from, { text: '✅ Kamu berhasil ikut giveaway! Semoga beruntung.' })
-            break
-          }
-
-          case '.endgiveaway': {
-            if (!isGroup) return
-            if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh mengakhiri giveaway.' }, { quoted: msg })
-
-            if (!activeGiveaway(from)) {
-              await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
-              break
-            }
-
-            giveawayData[from].isActive = false
-            saveGiveaway()
-            await sock.sendMessage(from, { text: '⚠️ Giveaway telah dibatalkan oleh admin.' })
+            await sock.sendMessage(from, { text: '✅ Kamu berhasil ikut giveaway! Semoga beruntung!' })
             break
           }
 
           case '.listgiveaway': {
             if (!isGroup) return
-            if (!(await isAdmin(from, sender, sock))) return sock.sendMessage(from, { text: '❌ Hanya admin yang boleh melihat daftar peserta.' }, { quoted: msg })
-
+            if (!(await isAdmin(from, sender, sock))) {
+              return sock.sendMessage(from, { text: '*Hanya admin yang boleh melihat daftar peserta giveaway.*' }, { quoted: msg })
+            }
             if (!activeGiveaway(from)) {
               await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
               break
             }
-
-            const g = giveawayData[from]
-            if (g.participants.length === 0) {
-              await sock.sendMessage(from, { text: 'ℹ️ Belum ada peserta yang ikut giveaway.' })
-            } else {
-              const listText = g.participants.map((p, i) => `${i + 1}. @${p.split('@')[0]}`).join('\n')
-              await sock.sendMessage(from, { text: `📋 Daftar peserta giveaway:\n${listText}`, mentions: g.participants })
+            const participants = giveawayData[from].participants
+            if (participants.length === 0) {
+              await sock.sendMessage(from, { text: '⚠️ Belum ada peserta giveaway.' })
+              break
             }
+            const listText = participants.map((p, i) => `${i + 1}. @${p.split('@')[0]}`).join('\n')
+            await sock.sendMessage(from, { text: `📋 Daftar Peserta Giveaway:\n\n${listText}`, mentions: participants })
             break
           }
+
+          case '.endgiveaway': {
+            if (!isGroup) return
+            if (!(await isAdmin(from, sender, sock))) {
+              return sock.sendMessage(from, { text: '*Hanya admin yang boleh mengakhiri giveaway.*' }, { quoted: msg })
+            }
+            if (!activeGiveaway(from)) {
+              await sock.sendMessage(from, { text: '❌ Tidak ada giveaway aktif di grup ini.' })
+              break
+            }
+            const gdata = giveawayData[from]
+            gdata.isActive = false
+            saveGiveaway()
+            await sock.sendMessage(from, { text: '✅ Giveaway berhasil diakhiri oleh admin.' })
+
+            if (gdata.participants.length === 0) {
+              await sock.sendMessage(from, { text: '⚠️ Tidak ada peserta, giveaway dibatalkan.' })
+              break
+            }
+            const winners = pickWinners(gdata.participants, gdata.winnerCount)
+            const winnerMentions = winners
+            const text =
+              `🎉 Giveaway *${gdata.description}* selesai lebih awal oleh admin!\n\n🏆 Pemenang:\n` +
+              winners.map(w => '@' + w.split('@')[0]).join('\n')
+
+            await sock.sendMessage(from, { text, mentions: winnerMentions })
+            break
+          }
+
+          default:
+            // Command tidak dikenal, abaikan
+            break
         }
       } catch (err) {
-        logger.error('Gagal memproses pesan:', err)
-        await sendErrorToOwner(err, 'Message Handling Error')
+        logger.error('Error processing message:', err)
+        await sendErrorToOwner(err, 'Error Processing Message')
       }
     })
-
-    // Auto warning tiap 30 menit
-    setInterval(async () => {
-      if (!autoWarning || warningCooldown || !sock || maintenance) return
-      warningCooldown = true
-      try {
-        const groups = await sock.groupFetchAllParticipating()
-        for (const group of Object.values(groups)) {
-          if (allowedGroups.includes(group.id)) {
-            await sock.sendMessage(group.id, {
-              text: '⚠️ Demi keamanan, mohon selalu gunakan *Midman Admin* saat transaksi di grup ini.'
-            })
-          }
-        }
-      } catch (err) {
-        logger.error('Gagal kirim warning:', err)
-      } finally {
-        setTimeout(() => (warningCooldown = false), 30 * 60 * 1000)
-      }
-    }, 60 * 1000)
-
-  } catch (error) {
-    logger.fatal('Error during connection:', error)
-    await sendErrorToOwner(error, 'Fatal Error saat Connect')
-    setTimeout(connectToWhatsApp, 10000)
+  } catch (err) {
+    logger.error('Fatal error:', err)
+    await sendErrorToOwner(err, 'Fatal Error')
+    setTimeout(() => connectToWhatsApp(), 10000)
   }
 }
-
-process.on('uncaughtException', async (err) => {
-  logger.error('❌ Uncaught Exception:', err)
-  if (sock) await sendErrorToOwner(err, 'Uncaught Exception')
-})
-
-process.on('unhandledRejection', async (reason) => {
-  logger.error('❌ Unhandled Rejection:', reason)
-  if (sock) await sendErrorToOwner(reason, 'Unhandled Rejection')
-})
 
 connectToWhatsApp()
