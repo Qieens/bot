@@ -202,17 +202,20 @@ async function connectToWhatsApp() {
           return
         }
 
-      if (isGroup && type === 'extendedTextMessage') {
-        const text = msg.message.extendedTextMessage?.text || ''
-        if (/chat\.whatsapp\.com\//i.test(text) && !(await isAdmin(from, sender, sock))) {
-          await sock.sendMessage(from, {
-            protocolMessage: {
-              key: msg.key,
-              type: 0
-            }
-          })
-        }
+    // === Anti link grup WhatsApp ===
+    if (isGroup && /chat\.whatsapp\.com\//i.test(body)) {
+      if (!(await isAdmin(from, sender, sock))) {
+        // Hapus pesan link agar tidak terlihat anggota lain
+        await sock.deleteMessage(from, { id: msg.key.id, remoteJid: from, fromMe: false })
+
+        // Kirim peringatan singkat (optional)
+        await sock.sendMessage(from, {
+          text: `⚠️ @${sender.split('@')[0]}, dilarang mengirim link grup WhatsApp!`,
+          mentions: [sender]
+        })
+        return // hentikan proses lebih lanjut supaya command tidak diproses
       }
+    }
 
 
         if (body.startsWith('.')) {
